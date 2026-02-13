@@ -263,6 +263,14 @@ export interface UicBarcodeTicketInput {
   level1Signature?: Uint8Array;
   /** Level 2 signature bytes (placeholder). */
   level2Signature?: Uint8Array;
+  /** End of validity year (2016-2269, v2 header only). */
+  endOfValidityYear?: number;
+  /** End of validity day (1-366). */
+  endOfValidityDay?: number;
+  /** End of validity time in minutes (0-1439). */
+  endOfValidityTime?: number;
+  /** Validity duration in minutes (1-3600). */
+  validityDuration?: number;
   /** FCB version (1, 2 or 3). Default: 2. */
   fcbVersion?: number;
   /** The rail ticket data to encode. */

@@ -1,5 +1,7 @@
 # dosipas-ts
 
+> **[Try the online playground](https://theophile.github.io/dosipas-ts/)** — decode, encode, sign, and verify UIC barcode tickets in your browser.
+
 Decode, encode, and verify UIC barcode tickets with Intercode 6 extensions in TypeScript.
 
 Handles the full UIC barcode envelope (header versions 1 and 2), FCB rail ticket data (versions 1, 2, and 3), Intercode 6 issuing extensions, dynamic data, and two-level ECDSA signature verification.

@@ -116,6 +116,10 @@ export function encodeTicket(input: UicBarcodeTicketInput): string {
         level1SigningAlg: input.level1SigningAlg,
         level2SigningAlg: input.level2SigningAlg,
         level2PublicKey: input.level2PublicKey,
+        endOfValidityYear: input.endOfValidityYear,
+        endOfValidityDay: input.endOfValidityDay,
+        endOfValidityTime: input.endOfValidityTime,
+        validityDuration: input.validityDuration,
       },
       level1Signature: input.level1Signature,
       level2Data,
@@ -181,7 +185,7 @@ function encodeRailTicket(fcbVersion: number, input: UicBarcodeTicketInput): Uin
 
   // Build transport documents
   const transportDocument = input.railTicket.transportDocument?.map((doc) => ({
-    ticket: { [doc.ticketType]: doc.ticket },
+    ticket: { key: doc.ticketType, value: doc.ticket },
   }));
 
   // Build the full rail ticket data
