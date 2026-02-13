@@ -1,6 +1,6 @@
 # dosipas-ts
 
-> **[Try the online playground](https://theophile.github.io/dosipas-ts/)** — decode, encode, sign, and verify UIC barcode tickets in your browser.
+> **[Try the online playground](https://sysdevrun.github.io/dosipas-ts/)** — decode, encode, sign, and verify UIC barcode tickets in your browser.
 
 Decode, encode, and verify UIC barcode tickets with Intercode 6 extensions in TypeScript.
 
