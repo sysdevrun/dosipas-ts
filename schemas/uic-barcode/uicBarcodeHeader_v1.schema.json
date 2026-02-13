@@ -1,0 +1,376 @@
+{
+  "UicBarcodeHeader": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "format",
+        "schema": {
+          "type": "IA5String"
+        }
+      },
+      {
+        "name": "level2SignedData",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "level1Data",
+              "schema": {
+                "type": "SEQUENCE",
+                "fields": [
+                  {
+                    "name": "securityProviderNum",
+                    "schema": {
+                      "type": "INTEGER",
+                      "min": 1,
+                      "max": 32000
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "securityProviderIA5",
+                    "schema": {
+                      "type": "IA5String"
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "keyId",
+                    "schema": {
+                      "type": "INTEGER",
+                      "min": 0,
+                      "max": 99999
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "dataSequence",
+                    "schema": {
+                      "type": "SEQUENCE OF",
+                      "item": {
+                        "type": "SEQUENCE",
+                        "fields": [
+                          {
+                            "name": "dataFormat",
+                            "schema": {
+                              "type": "IA5String"
+                            }
+                          },
+                          {
+                            "name": "data",
+                            "schema": {
+                              "type": "OCTET STRING"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": "level1KeyAlg",
+                    "schema": {
+                      "type": "OBJECT IDENTIFIER"
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "level2KeyAlg",
+                    "schema": {
+                      "type": "OBJECT IDENTIFIER"
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "level1SigningAlg",
+                    "schema": {
+                      "type": "OBJECT IDENTIFIER"
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "level2SigningAlg",
+                    "schema": {
+                      "type": "OBJECT IDENTIFIER"
+                    },
+                    "optional": true
+                  },
+                  {
+                    "name": "level2PublicKey",
+                    "schema": {
+                      "type": "OCTET STRING"
+                    },
+                    "optional": true
+                  }
+                ]
+              }
+            },
+            {
+              "name": "level1Signature",
+              "schema": {
+                "type": "OCTET STRING"
+              },
+              "optional": true
+            },
+            {
+              "name": "level2Data",
+              "schema": {
+                "type": "SEQUENCE",
+                "fields": [
+                  {
+                    "name": "dataFormat",
+                    "schema": {
+                      "type": "IA5String"
+                    }
+                  },
+                  {
+                    "name": "data",
+                    "schema": {
+                      "type": "OCTET STRING"
+                    }
+                  }
+                ]
+              },
+              "optional": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "level2Signature",
+        "schema": {
+          "type": "OCTET STRING"
+        },
+        "optional": true
+      }
+    ]
+  },
+  "Level2DataType": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "level1Data",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "securityProviderNum",
+              "schema": {
+                "type": "INTEGER",
+                "min": 1,
+                "max": 32000
+              },
+              "optional": true
+            },
+            {
+              "name": "securityProviderIA5",
+              "schema": {
+                "type": "IA5String"
+              },
+              "optional": true
+            },
+            {
+              "name": "keyId",
+              "schema": {
+                "type": "INTEGER",
+                "min": 0,
+                "max": 99999
+              },
+              "optional": true
+            },
+            {
+              "name": "dataSequence",
+              "schema": {
+                "type": "SEQUENCE OF",
+                "item": {
+                  "type": "SEQUENCE",
+                  "fields": [
+                    {
+                      "name": "dataFormat",
+                      "schema": {
+                        "type": "IA5String"
+                      }
+                    },
+                    {
+                      "name": "data",
+                      "schema": {
+                        "type": "OCTET STRING"
+                      }
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "name": "level1KeyAlg",
+              "schema": {
+                "type": "OBJECT IDENTIFIER"
+              },
+              "optional": true
+            },
+            {
+              "name": "level2KeyAlg",
+              "schema": {
+                "type": "OBJECT IDENTIFIER"
+              },
+              "optional": true
+            },
+            {
+              "name": "level1SigningAlg",
+              "schema": {
+                "type": "OBJECT IDENTIFIER"
+              },
+              "optional": true
+            },
+            {
+              "name": "level2SigningAlg",
+              "schema": {
+                "type": "OBJECT IDENTIFIER"
+              },
+              "optional": true
+            },
+            {
+              "name": "level2PublicKey",
+              "schema": {
+                "type": "OCTET STRING"
+              },
+              "optional": true
+            }
+          ]
+        }
+      },
+      {
+        "name": "level1Signature",
+        "schema": {
+          "type": "OCTET STRING"
+        },
+        "optional": true
+      },
+      {
+        "name": "level2Data",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "dataFormat",
+              "schema": {
+                "type": "IA5String"
+              }
+            },
+            {
+              "name": "data",
+              "schema": {
+                "type": "OCTET STRING"
+              }
+            }
+          ]
+        },
+        "optional": true
+      }
+    ]
+  },
+  "Level1DataType": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "securityProviderNum",
+        "schema": {
+          "type": "INTEGER",
+          "min": 1,
+          "max": 32000
+        },
+        "optional": true
+      },
+      {
+        "name": "securityProviderIA5",
+        "schema": {
+          "type": "IA5String"
+        },
+        "optional": true
+      },
+      {
+        "name": "keyId",
+        "schema": {
+          "type": "INTEGER",
+          "min": 0,
+          "max": 99999
+        },
+        "optional": true
+      },
+      {
+        "name": "dataSequence",
+        "schema": {
+          "type": "SEQUENCE OF",
+          "item": {
+            "type": "SEQUENCE",
+            "fields": [
+              {
+                "name": "dataFormat",
+                "schema": {
+                  "type": "IA5String"
+                }
+              },
+              {
+                "name": "data",
+                "schema": {
+                  "type": "OCTET STRING"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "level1KeyAlg",
+        "schema": {
+          "type": "OBJECT IDENTIFIER"
+        },
+        "optional": true
+      },
+      {
+        "name": "level2KeyAlg",
+        "schema": {
+          "type": "OBJECT IDENTIFIER"
+        },
+        "optional": true
+      },
+      {
+        "name": "level1SigningAlg",
+        "schema": {
+          "type": "OBJECT IDENTIFIER"
+        },
+        "optional": true
+      },
+      {
+        "name": "level2SigningAlg",
+        "schema": {
+          "type": "OBJECT IDENTIFIER"
+        },
+        "optional": true
+      },
+      {
+        "name": "level2PublicKey",
+        "schema": {
+          "type": "OCTET STRING"
+        },
+        "optional": true
+      }
+    ]
+  },
+  "DataType": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "dataFormat",
+        "schema": {
+          "type": "IA5String"
+        }
+      },
+      {
+        "name": "data",
+        "schema": {
+          "type": "OCTET STRING"
+        }
+      }
+    ]
+  }
+}

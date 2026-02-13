@@ -1,0 +1,46 @@
+{
+  "name": "dosipas-ts",
+  "version": "1.0.0",
+  "description": "UIC barcode ticket encoder/decoder/verifier with Intercode 6 extensions",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "schemas"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "uic",
+    "barcode",
+    "intercode6",
+    "rail",
+    "ticket",
+    "dosipas",
+    "asn1-per"
+  ],
+  "author": "Théophile Helleboid <contact@sys-dev-run.fr>",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "asn1-per-ts": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.2.3",
+    "typescript": "^5.4.5",
+    "vitest": "^3.0.0"
+  }
+}
