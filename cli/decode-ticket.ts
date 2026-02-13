@@ -3,16 +3,21 @@
  * CLI tool to decode and verify UIC barcode tickets.
  *
  * Usage:
- *   npx tsx cli/decode-ticket.ts <hex-file-or-inline-hex> [--keys path/to/keys.xml]
+ *   npx tsx cli/decode-ticket.ts <hex-file-or-inline-hex> [options]
  *   npx tsx cli/decode-ticket.ts solea                     # built-in fixture
  *   npx tsx cli/decode-ticket.ts path/to/ticket.hex        # hex file
  *   npx tsx cli/decode-ticket.ts "815563dd8e76..."         # inline hex
- *   npx tsx cli/decode-ticket.ts solea --keys keys.xml     # with Level 1 key lookup
+ *   npx tsx cli/decode-ticket.ts solea --keys keys.xml     # custom Level 1 keys
+ *   npx tsx cli/decode-ticket.ts solea --no-keys           # skip Level 1 verification
+ *
+ * Level 1 verification uses tests/fixtures/uic-publickeys.xml by default.
  *
  * Built-in fixtures: sample, sncf, solea, cts, grand_est
  */
 
 import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 import {
   decodeTicket,
   verifyLevel2Signature,
@@ -300,20 +305,35 @@ async function main() {
     console.log();
     console.log('Options:');
     console.log('  --keys <path>  UIC public key XML file for Level 1 verification');
+    console.log('                 (default: tests/fixtures/uic-publickeys.xml)');
+    console.log('  --no-keys      Skip Level 1 signature verification');
     process.exit(0);
   }
 
-  // Parse --keys option
+  // Parse --keys option (defaults to bundled UIC public keys)
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const defaultKeysPath = path.join(__dirname, '..', 'tests', 'fixtures', 'uic-publickeys.xml');
+
   let keysXml: string | undefined;
-  const keysIdx = args.indexOf('--keys');
-  if (keysIdx !== -1) {
-    const keysPath = args[keysIdx + 1];
-    if (!keysPath) {
-      console.error('Error: --keys requires a path to the XML key file');
-      process.exit(1);
+  const noKeysIdx = args.indexOf('--no-keys');
+  if (noKeysIdx !== -1) {
+    args.splice(noKeysIdx, 1);
+  } else {
+    const keysIdx = args.indexOf('--keys');
+    let keysPath: string;
+    if (keysIdx !== -1) {
+      keysPath = args[keysIdx + 1];
+      if (!keysPath) {
+        console.error('Error: --keys requires a path to the XML key file');
+        process.exit(1);
+      }
+      args.splice(keysIdx, 2);
+    } else {
+      keysPath = defaultKeysPath;
     }
-    keysXml = fs.readFileSync(keysPath, 'utf-8');
-    args.splice(keysIdx, 2);
+    if (fs.existsSync(keysPath)) {
+      keysXml = fs.readFileSync(keysPath, 'utf-8');
+    }
   }
 
   // Resolve hex input
@@ -411,8 +431,7 @@ async function main() {
       warn('Cannot look up Level 1 key: missing issuer code or key ID');
     }
   } else {
-    warn('Level 1 verification skipped (no --keys provided)');
-    console.log(`  ${DIM}Use --keys /path/to/uic-publickeys.xml to verify Level 1${RESET}`);
+    warn('Level 1 verification skipped (no keys file found)');
   }
 
   console.log();
