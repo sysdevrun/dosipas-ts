@@ -101,10 +101,24 @@ export interface IssuingDetail {
   currency?: string;
   currencyFract?: number;
   issuerPNR?: string;
+  issuedOnTrainNum?: number;
+  issuedOnTrainIA5?: string;
+  issuedOnLine?: number;
+  pointOfSale?: GeoCoordinate;
   /** Decoded Intercode 6 issuing extension, if present. */
   intercodeIssuing?: IntercodeIssuingData;
   /** Raw extension data if present but not an Intercode extension. */
   extension?: ExtensionData;
+}
+
+export interface GeoCoordinate {
+  geoUnit?: number;
+  coordinateSystem?: number;
+  hemisphereLongitude?: number;
+  hemisphereLatitude?: number;
+  longitude?: number;
+  latitude?: number;
+  accuracy?: number;
 }
 
 export interface ExtensionData {
@@ -178,6 +192,7 @@ export interface TravelerInfo {
   passengerWithReducedMobility?: boolean;
   countryOfResidence?: number;
   countryOfPassport?: number;
+  countryOfIdCard?: number;
   dateOfBirth?: string;
   status?: CustomerStatus[];
 }
@@ -208,8 +223,10 @@ export interface ControlDetail {
   identificationByCardReference?: CardReference[];
   identificationByIdCard?: boolean;
   identificationByPassportId?: boolean;
+  identificationItem?: number;
   passportValidationRequired?: boolean;
   onlineValidationRequired?: boolean;
+  randomDetailedValidationRequired?: boolean;
   ageCheckRequired?: boolean;
   reductionCardCheckRequired?: boolean;
   infoText?: string;

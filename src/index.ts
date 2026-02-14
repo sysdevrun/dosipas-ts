@@ -11,6 +11,7 @@ export type {
   DataBlock,
   RailTicketData,
   IssuingDetail,
+  GeoCoordinate,
   ExtensionData,
   IntercodeIssuingData,
   IntercodeDynamicData,
