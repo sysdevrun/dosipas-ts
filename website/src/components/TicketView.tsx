@@ -1,4 +1,4 @@
-import type { UicBarcodeTicket, SecurityInfo, RailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, TravelerDetail, TransportDocumentEntry, ControlDetail } from 'dosipas-ts';
+import type { UicBarcodeTicket, SecurityInfo, RailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentEntry, ControlDetail } from 'dosipas-ts';
 import JsonTree from './JsonTree';
 
 interface Props {
@@ -117,21 +117,73 @@ function IntercodeIssuingSection({ data }: { data: IntercodeIssuingData }) {
   );
 }
 
+function FullField({ label, value }: { label: string; value?: string | number | boolean | null }) {
+  const isSet = value !== undefined && value !== null;
+  return (
+    <div className="flex gap-2 py-0.5">
+      <span className="text-gray-500 min-w-32 shrink-0">{label}</span>
+      {isSet ? (
+        <span className="font-mono text-gray-900">
+          {typeof value === 'boolean' ? (value ? 'Yes' : 'No') : String(value)}
+        </span>
+      ) : (
+        <span className="text-gray-300 italic text-xs">not set</span>
+      )}
+    </div>
+  );
+}
+
+function CustomerStatusSection({ statuses }: { statuses?: CustomerStatus[] }) {
+  if (!statuses || statuses.length === 0) {
+    return (
+      <div className="flex gap-2 py-0.5">
+        <span className="text-gray-500 min-w-32 shrink-0">Status</span>
+        <span className="text-gray-300 italic text-xs">not set</span>
+      </div>
+    );
+  }
+  return (
+    <>
+      {statuses.map((s, i) => (
+        <div key={i} className="ml-2 mt-1 pt-1 border-t border-gray-50">
+          <span className="text-xs text-gray-400">Status {i + 1}</span>
+          <FullField label="Provider (num)" value={s.statusProviderNum} />
+          <FullField label="Provider (IA5)" value={s.statusProviderIA5} />
+          <FullField label="Customer Status" value={s.customerStatus} />
+          <FullField label="Status Descr." value={s.customerStatusDescr} />
+        </div>
+      ))}
+    </>
+  );
+}
+
 function TravelerSection({ detail }: { detail: TravelerDetail }) {
   return (
     <Section title="Traveler Detail">
-      <Field label="Language" value={detail.preferredLanguage} />
-      <Field label="Group Name" value={detail.groupName} />
+      <FullField label="Language" value={detail.preferredLanguage} />
+      <FullField label="Group Name" value={detail.groupName} />
       {detail.traveler?.map((t, i) => (
         <div key={i} className="mt-1 pt-1 border-t border-gray-100">
           <span className="text-xs text-gray-400">Traveler {i + 1}</span>
-          <Field label="First Name" value={t.firstName} />
-          <Field label="Last Name" value={t.lastName} />
-          <Field label="Date of Birth" value={t.dateOfBirth} />
-          <Field label="Ticket Holder" value={t.ticketHolder} />
-          <Field label="Passenger Type" value={t.passengerType} />
-          <Field label="Customer ID" value={t.customerIdIA5 ?? t.customerIdNum} />
-          <Field label="ID Card" value={t.idCard} />
+          <FullField label="First Name" value={t.firstName} />
+          <FullField label="Second Name" value={t.secondName} />
+          <FullField label="Last Name" value={t.lastName} />
+          <FullField label="Title" value={t.title} />
+          <FullField label="Gender" value={t.gender} />
+          <FullField label="Date of Birth" value={t.dateOfBirth} />
+          <FullField label="Year of Birth" value={t.yearOfBirth} />
+          <FullField label="Month of Birth" value={t.monthOfBirth} />
+          <FullField label="Day of Birth" value={t.dayOfBirth} />
+          <FullField label="ID Card" value={t.idCard} />
+          <FullField label="Passport ID" value={t.passportId} />
+          <FullField label="Customer ID (IA5)" value={t.customerIdIA5} />
+          <FullField label="Customer ID (num)" value={t.customerIdNum} />
+          <FullField label="Ticket Holder" value={t.ticketHolder} />
+          <FullField label="Passenger Type" value={t.passengerType} />
+          <FullField label="Reduced Mobility" value={t.passengerWithReducedMobility} />
+          <FullField label="Country of Residence" value={t.countryOfResidence} />
+          <FullField label="Country of Passport" value={t.countryOfPassport} />
+          <CustomerStatusSection statuses={t.status} />
         </div>
       ))}
     </Section>
