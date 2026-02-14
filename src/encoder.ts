@@ -188,6 +188,22 @@ function encodeRailTicket(fcbVersion: number, input: UicBarcodeTicketInput): Uin
     ticket: { key: doc.ticketType, value: doc.ticket },
   }));
 
+  // Validate traveler birth-day fields match the target FCB version
+  if (input.railTicket.travelerDetail?.traveler) {
+    for (const t of input.railTicket.travelerDetail.traveler) {
+      if (fcbVersion >= 2 && t.dayOfBirth !== undefined) {
+        throw new Error(
+          `Traveler field "dayOfBirth" is not valid for FCB v${fcbVersion}. Use "dayOfBirthInMonth" instead.`,
+        );
+      }
+      if (fcbVersion < 2 && t.dayOfBirthInMonth !== undefined) {
+        throw new Error(
+          `Traveler field "dayOfBirthInMonth" is not valid for FCB v${fcbVersion}. Use "dayOfBirth" instead.`,
+        );
+      }
+    }
+  }
+
   // Build the full rail ticket data
   const ticketData: Record<string, unknown> = {
     issuingDetail,
