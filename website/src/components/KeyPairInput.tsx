@@ -9,6 +9,8 @@ interface Props {
   onPrivateKeyChange: (hex: string) => void;
   publicKeyHex: string;
   onPublicKeyChange: (hex: string) => void;
+  /** When provided, shows a "FIPS Test Key" button that loads this P-256 private key. */
+  fipsTestKey?: string;
 }
 
 export default function KeyPairInput({
@@ -19,6 +21,7 @@ export default function KeyPairInput({
   onPrivateKeyChange,
   publicKeyHex,
   onPublicKeyChange,
+  fipsTestKey,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +45,13 @@ export default function KeyPairInput({
     onPrivateKeyChange(bytesToHex(kp.privateKey));
   };
 
+  const handleLoadFipsTestKey = () => {
+    if (fipsTestKey) {
+      onCurveChange('P-256');
+      onPrivateKeyChange(fipsTestKey);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-3">
@@ -61,6 +71,15 @@ export default function KeyPairInput({
         >
           Generate
         </button>
+        {fipsTestKey && (
+          <button
+            onClick={handleLoadFipsTestKey}
+            className="text-xs px-3 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200 transition-colors"
+            title="Load NIST FIPS 186-4 ECDSA P-256 test vector key"
+          >
+            FIPS Test Key
+          </button>
+        )}
         <span className="text-xs text-gray-400 ml-auto">
           Key: {CURVES[curve]?.keyAlgOid} / Sig: {CURVES[curve]?.sigAlgOid}
         </span>
