@@ -730,9 +730,15 @@ export default function TicketForm({ value, onChange }: Props) {
           placeholder="1-12"
         />
         <OptionalNumberField
-          label="Day of Birth"
+          label="Day of Birth (v1)"
           value={traveler?.dayOfBirth}
           onChange={(v) => updateTravelerPerson({ dayOfBirth: v })}
+          placeholder="0-370 (day of year)"
+        />
+        <OptionalNumberField
+          label="Day of Birth in Month (v2/v3)"
+          value={traveler?.dayOfBirthInMonth}
+          onChange={(v) => updateTravelerPerson({ dayOfBirthInMonth: v })}
           placeholder="1-31"
         />
         <CheckboxField

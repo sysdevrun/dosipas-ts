@@ -169,7 +169,10 @@ export interface TravelerInfo {
   customerIdNum?: number;
   yearOfBirth?: number;
   monthOfBirth?: number;
+  /** Day-of-year (0-370). FCB v1 only. */
   dayOfBirth?: number;
+  /** Day-of-month (1-31). FCB v2/v3 only. */
+  dayOfBirthInMonth?: number;
   ticketHolder?: boolean;
   passengerType?: string;
   passengerWithReducedMobility?: boolean;

@@ -173,7 +173,8 @@ function TravelerSection({ detail }: { detail: TravelerDetail }) {
           <FullField label="Date of Birth" value={t.dateOfBirth} />
           <FullField label="Year of Birth" value={t.yearOfBirth} />
           <FullField label="Month of Birth" value={t.monthOfBirth} />
-          <FullField label="Day of Birth" value={t.dayOfBirth} />
+          <FullField label="Day of Birth (v1)" value={t.dayOfBirth} />
+          <FullField label="Day of Birth in Month (v2/v3)" value={t.dayOfBirthInMonth} />
           <FullField label="ID Card" value={t.idCard} />
           <FullField label="Passport ID" value={t.passportId} />
           <FullField label="Customer ID (IA5)" value={t.customerIdIA5} />
