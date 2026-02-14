@@ -27,7 +27,11 @@ export default function AztecBarcode({ data }: Props) {
 
   return (
     <div className="space-y-2">
-      <canvas ref={canvasRef} className="mx-auto" />
+      <canvas
+        ref={canvasRef}
+        className="mx-auto w-full"
+        style={{ imageRendering: 'pixelated' }}
+      />
       <button
         onClick={download}
         className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
