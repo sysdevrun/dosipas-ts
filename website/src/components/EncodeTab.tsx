@@ -5,6 +5,10 @@ import KeyPairInput from './KeyPairInput';
 import AztecBarcode from './AztecBarcode';
 import { useTicketEncode } from '../hooks/useTicketEncode';
 
+/** NIST FIPS 186-4 ECDSA P-256 KeyPair test vector private keys (from CAVP KeyPair.rsp). */
+const FIPS_TEST_KEY_1 = 'c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357';
+const FIPS_TEST_KEY_2 = '710735c8388f48c684a97bd66751cc5f5a122d6b9a96a2dbe73662f78217446d';
+
 interface Props {
   onDecode: (hex: string) => void;
   prefillInput: UicBarcodeTicketInput | null;
@@ -169,6 +173,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
           onPrivateKeyChange={setL1PrivKey}
           publicKeyHex={l1PubKey}
           onPublicKeyChange={setL1PubKey}
+          fipsTestKey={FIPS_TEST_KEY_1}
         />
 
         <div className="border-t border-gray-100 pt-3">
@@ -192,6 +197,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
               onPrivateKeyChange={setL2PrivKey}
               publicKeyHex={l2PubKey}
               onPublicKeyChange={setL2PubKey}
+              fipsTestKey={FIPS_TEST_KEY_2}
             />
           )}
         </div>
