@@ -87,7 +87,7 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: 
             <div className="flex gap-2">
               <button
                 onClick={handleEditInEncoder}
-                className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
+                className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
               >
                 Edit in Encoder
               </button>

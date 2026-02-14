@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type { UicBarcodeTicketInput } from 'dosipas-ts';
 import TicketForm from './TicketForm';
 import KeyPairInput from './KeyPairInput';
@@ -62,8 +62,18 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
   const [l2PubKey, setL2PubKey] = useState('');
 
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
 
   const { hex, bytes, error, loading, encode } = useTicketEncode();
+
+  // Keep mutable refs for the regeneration interval
+  const regenRef = useRef<{
+    input: UicBarcodeTicketInput;
+    l1PrivKey: string;
+    l1Curve: string;
+    l2PrivKey: string;
+    l2Curve: string;
+  } | null>(null);
 
   // Apply prefill from decoded ticket
   useEffect(() => {
@@ -73,7 +83,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     }
   }, [prefillInput, onPrefillConsumed]);
 
-  const handleEncode = () => {
+  const handleEncode = useCallback(() => {
     if (!l1PrivKey) {
       return;
     }
@@ -81,7 +91,58 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       return;
     }
     encode(input, l1PrivKey, l1Curve, l2Enabled ? l2PrivKey : '', l2Curve);
-  };
+    // Store params for regeneration when L2 is enabled
+    if (l2Enabled) {
+      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
+      setCountdown(10);
+    } else {
+      regenRef.current = null;
+      setCountdown(null);
+    }
+  }, [input, l1PrivKey, l1Curve, l2Enabled, l2PrivKey, l2Curve, encode]);
+
+  // Level 2 signature regeneration: re-encode every 10 seconds
+  useEffect(() => {
+    if (countdown === null) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          // Time to regenerate
+          const params = regenRef.current;
+          if (params) {
+            encode(
+              params.input,
+              params.l1PrivKey,
+              params.l1Curve,
+              params.l2PrivKey,
+              params.l2Curve,
+            );
+          }
+          return 10;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [countdown === null, encode]);
+
+  // Update regeneration params when input or keys change (while regeneration is active)
+  useEffect(() => {
+    if (regenRef.current) {
+      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
+    }
+  }, [input, l1PrivKey, l1Curve, l2PrivKey, l2Curve]);
+
+  // Stop regeneration when L2 is disabled
+  useEffect(() => {
+    if (!l2Enabled) {
+      regenRef.current = null;
+      setCountdown(null);
+    }
+  }, [l2Enabled]);
 
   const copyHex = () => {
     navigator.clipboard.writeText(hex);
@@ -216,9 +277,16 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
 
           {bytes.length > 0 && (
             <div className="bg-white rounded-lg border border-gray-200 p-4 text-center">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Aztec Barcode
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                  Aztec Barcode
+                </h3>
+                {countdown !== null && (
+                  <span className="text-xs text-amber-600 font-medium tabular-nums">
+                    Regenerating in {countdown}s
+                  </span>
+                )}
+              </div>
               <AztecBarcode data={bytes} />
             </div>
           )}
