@@ -766,6 +766,11 @@ export default function TicketForm({ value, onChange }: Props) {
           value={traveler?.countryOfPassport}
           onChange={(v) => updateTravelerPerson({ countryOfPassport: v })}
         />
+        <OptionalNumberField
+          label="Country of ID Card"
+          value={traveler?.countryOfIdCard}
+          onChange={(v) => updateTravelerPerson({ countryOfIdCard: v })}
+        />
       </ToggleSection>
 
       {/* Transport Documents */}

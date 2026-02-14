@@ -250,6 +250,10 @@ function decodeIssuingDetail(iss: any): IssuingDetail {
     currency: iss.currency,
     currencyFract: iss.currencyFract,
     issuerPNR: iss.issuerPNR,
+    issuedOnTrainNum: iss.issuedOnTrainNum,
+    issuedOnTrainIA5: iss.issuedOnTrainIA5,
+    issuedOnLine: iss.issuedOnLine,
+    pointOfSale: iss.pointOfSale,
   };
 
   if (iss.extension) {

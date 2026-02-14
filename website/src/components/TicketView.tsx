@@ -92,6 +92,28 @@ function IssuingSection({ detail }: { detail: IssuingDetail }) {
       <Field label="Currency" value={detail.currency} />
       <Field label="Currency Fract" value={detail.currencyFract} />
       <Field label="PNR" value={detail.issuerPNR} />
+      <Field label="Issued on Train (num)" value={detail.issuedOnTrainNum} />
+      <Field label="Issued on Train (IA5)" value={detail.issuedOnTrainIA5} />
+      <Field label="Issued on Line" value={detail.issuedOnLine} />
+      {detail.pointOfSale && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Point of Sale</span>
+          <Field label="Geo Unit" value={detail.pointOfSale.geoUnit} />
+          <Field label="Coordinate System" value={detail.pointOfSale.coordinateSystem} />
+          <Field label="Hemisphere Lon" value={detail.pointOfSale.hemisphereLongitude} />
+          <Field label="Hemisphere Lat" value={detail.pointOfSale.hemisphereLatitude} />
+          <Field label="Longitude" value={detail.pointOfSale.longitude} />
+          <Field label="Latitude" value={detail.pointOfSale.latitude} />
+          <Field label="Accuracy" value={detail.pointOfSale.accuracy} />
+        </div>
+      )}
+      {detail.extension && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Extension</span>
+          <Field label="Extension ID" value={detail.extension.extensionId} />
+          <BytesField label="Extension Data" value={detail.extension.extensionData} />
+        </div>
+      )}
       {detail.intercodeIssuing && <IntercodeIssuingSection data={detail.intercodeIssuing} />}
     </Section>
   );
@@ -184,6 +206,7 @@ function TravelerSection({ detail }: { detail: TravelerDetail }) {
           <FullField label="Reduced Mobility" value={t.passengerWithReducedMobility} />
           <FullField label="Country of Residence" value={t.countryOfResidence} />
           <FullField label="Country of Passport" value={t.countryOfPassport} />
+          <FullField label="Country of ID Card" value={t.countryOfIdCard} />
           <CustomerStatusSection statuses={t.status} />
         </div>
       ))}
@@ -212,14 +235,25 @@ function ControlSection({ detail }: { detail: ControlDetail }) {
       <Field label="ID by Card" value={detail.identificationByCardReference ? 'Yes' : undefined} />
       <Field label="ID by ID Card" value={detail.identificationByIdCard} />
       <Field label="ID by Passport" value={detail.identificationByPassportId} />
+      <Field label="Identification Item" value={detail.identificationItem} />
+      <Field label="Passport Validation" value={detail.passportValidationRequired} />
       <Field label="Online Validation" value={detail.onlineValidationRequired} />
+      <Field label="Random Detailed Validation" value={detail.randomDetailedValidationRequired} />
       <Field label="Age Check" value={detail.ageCheckRequired} />
+      <Field label="Reduction Card Check" value={detail.reductionCardCheckRequired} />
       <Field label="Info Text" value={detail.infoText} />
       {detail.identificationByCardReference && (
         <JsonTree data={detail.identificationByCardReference} label="cardReferences" />
       )}
       {detail.includedTickets && (
         <JsonTree data={detail.includedTickets} label="includedTickets" />
+      )}
+      {detail.extension && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Extension</span>
+          <Field label="Extension ID" value={detail.extension.extensionId} />
+          <BytesField label="Extension Data" value={detail.extension.extensionData} />
+        </div>
       )}
     </Section>
   );
