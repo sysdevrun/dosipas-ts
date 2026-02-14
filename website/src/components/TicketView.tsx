@@ -56,9 +56,54 @@ function oidName(oid?: string): string | undefined {
   return OID_NAMES[oid] ?? oid;
 }
 
-function SecuritySection({ security }: { security: SecurityInfo }) {
+/** Signature-payload region wrapper with colored left border and label. */
+function SignatureRegion({
+  label,
+  color,
+  children,
+}: {
+  label: string;
+  color: 'green' | 'blue';
+  children: React.ReactNode;
+}) {
+  const borderColor = color === 'green' ? 'border-green-400' : 'border-blue-400';
+  const bgColor = color === 'green' ? 'bg-green-50' : 'bg-blue-50';
+  const textColor = color === 'green' ? 'text-green-700' : 'text-blue-700';
+  const badgeBg = color === 'green' ? 'bg-green-100' : 'bg-blue-100';
+
   return (
-    <Section title="Security">
+    <div className={`border-l-2 ${borderColor} ${bgColor} rounded-r-lg pl-3 pr-1 py-3 space-y-4`}>
+      <div className="flex items-center gap-2">
+        <span className={`text-xs font-semibold ${textColor} ${badgeBg} px-2 py-0.5 rounded`}>
+          {label}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/** Embedded-structure indicator for non-signature nesting (e.g. FCB inside dataSequence). */
+function EmbeddedBlock({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-l-2 border-gray-300 pl-3 space-y-4">
+      <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+        {label}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function SecurityMetadataSection({ security }: { security: SecurityInfo }) {
+  return (
+    <Section title="Security Metadata">
       <Field label="Provider" value={security.securityProviderNum} />
       <Field label="Provider (IA5)" value={security.securityProviderIA5} />
       <Field label="Key ID" value={security.keyId} />
@@ -67,7 +112,6 @@ function SecuritySection({ security }: { security: SecurityInfo }) {
       <Field label="L1 Signing Alg" value={oidName(security.level1SigningAlg)} />
       <Field label="L2 Signing Alg" value={oidName(security.level2SigningAlg)} />
       <BytesField label="L2 Public Key" value={security.level2PublicKey} />
-      <BytesField label="L1 Signature" value={security.level1Signature} />
       <Field label="Validity Year" value={security.endOfValidityYear} />
       <Field label="Validity Day" value={security.endOfValidityDay} />
       <Field label="Validity Time" value={security.endOfValidityTime} />
@@ -261,7 +305,7 @@ function ControlSection({ detail }: { detail: ControlDetail }) {
 
 function DynamicDataSection({ data }: { data: IntercodeDynamicData }) {
   return (
-    <Section title="Intercode 6 Dynamic Data">
+    <Section title="Level 2 Data — Intercode 6 Dynamic">
       <Field label="Day" value={data.dynamicContentDay} />
       <Field label="Time" value={data.dynamicContentTime} />
       <Field label="UTC Offset" value={data.dynamicContentUTCOffset} />
@@ -273,38 +317,64 @@ function DynamicDataSection({ data }: { data: IntercodeDynamicData }) {
 export default function TicketView({ ticket }: Props) {
   return (
     <div className="space-y-4">
+      {/* Header — outside both signature regions */}
       <Section title="Header">
         <Field label="Format" value={ticket.format} />
         <Field label="Header Version" value={ticket.headerVersion} />
       </Section>
 
-      <SecuritySection security={ticket.security} />
+      {/* Level 2 Signature Payload (level2SignedData) */}
+      <SignatureRegion label="Level 2 Signature Payload" color="green">
+        {/* Level 1 Signature Payload (level1Data) */}
+        <SignatureRegion label="Level 1 Signature Payload" color="blue">
+          <SecurityMetadataSection security={ticket.security} />
 
-      {ticket.railTickets.map((rt, i) => (
-        <div key={i} className="space-y-4">
-          <Section title={`Rail Ticket ${ticket.railTickets.length > 1 ? i + 1 : ''} (FCB${rt.fcbVersion})`}>
-            <Field label="FCB Version" value={rt.fcbVersion} />
-          </Section>
+          {/* dataSequence — decoded into rail tickets and other data blocks */}
+          {ticket.railTickets.map((rt, i) => (
+            <EmbeddedBlock
+              key={i}
+              label={`dataSequence[${i}] — FCB${rt.fcbVersion}`}
+            >
+              <Section title={`Rail Ticket ${ticket.railTickets.length > 1 ? i + 1 : ''} (FCB${rt.fcbVersion})`}>
+                <Field label="FCB Version" value={rt.fcbVersion} />
+              </Section>
 
-          {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} />}
-          {rt.travelerDetail && <TravelerSection detail={rt.travelerDetail} />}
-          {rt.transportDocument && rt.transportDocument.length > 0 && (
-            <TransportDocSection docs={rt.transportDocument} />
-          )}
-          {rt.controlDetail && <ControlSection detail={rt.controlDetail} />}
-        </div>
-      ))}
-
-      {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} />}
-
-      {ticket.otherDataBlocks.length > 0 && (
-        <Section title="Other Data Blocks">
-          {ticket.otherDataBlocks.map((block, i) => (
-            <div key={i}>
-              <Field label="Format" value={block.dataFormat} />
-              <BytesField label="Data" value={block.data} />
-            </div>
+              {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} />}
+              {rt.travelerDetail && <TravelerSection detail={rt.travelerDetail} />}
+              {rt.transportDocument && rt.transportDocument.length > 0 && (
+                <TransportDocSection docs={rt.transportDocument} />
+              )}
+              {rt.controlDetail && <ControlSection detail={rt.controlDetail} />}
+            </EmbeddedBlock>
           ))}
+
+          {ticket.otherDataBlocks.length > 0 && (
+            <EmbeddedBlock label={`dataSequence — other blocks`}>
+              <Section title="Other Data Blocks">
+                {ticket.otherDataBlocks.map((block, i) => (
+                  <div key={i}>
+                    <Field label="Format" value={block.dataFormat} />
+                    <BytesField label="Data" value={block.data} />
+                  </div>
+                ))}
+              </Section>
+            </EmbeddedBlock>
+          )}
+        </SignatureRegion>
+
+        {/* level1Signature — inside level2SignedData, outside level1Data */}
+        <Section title="Level 1 Signature">
+          <BytesField label="Signature" value={ticket.security.level1Signature} />
+        </Section>
+
+        {/* level2Data — inside level2SignedData, outside level1Data */}
+        {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} />}
+      </SignatureRegion>
+
+      {/* level2Signature — outside level2SignedData */}
+      {ticket.level2Signature && (
+        <Section title="Level 2 Signature">
+          <BytesField label="Signature" value={ticket.level2Signature} />
         </Section>
       )}
     </div>
