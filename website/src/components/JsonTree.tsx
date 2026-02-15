@@ -95,7 +95,7 @@ function JsonNode({ data, label, defaultOpen = false }: Props) {
   return (
     <div className="ml-4">
       {label && <span className="text-gray-500">{label}: </span>}
-      <span className="text-blue-700">{formatValue(data)}</span>
+      <span className={data === undefined ? "text-blue-400" : "text-blue-700"}>{formatValue(data)}</span>
     </div>
   );
 }
