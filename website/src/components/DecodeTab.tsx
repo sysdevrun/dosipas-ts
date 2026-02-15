@@ -93,43 +93,41 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: 
 
       {ticket && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <SignatureStatus result={signatures} loading={loading} />
-            <div className="flex gap-2">
-              <button
-                onClick={handleEditInEncoder}
-                className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Edit in Encoder
-              </button>
-              <button
-                onClick={copyHex}
-                className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
-              >
-                Copy hex
-              </button>
-              <button
-                onClick={() => setShowHexViewer(!showHexViewer)}
-                className={`text-xs px-2 py-1 rounded ${
-                  showHexViewer
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Hex viewer
-              </button>
-              <button
-                onClick={() => setShowRawJson(!showRawJson)}
-                className={`text-xs px-2 py-1 rounded ${
-                  showRawJson
-                    ? 'bg-blue-100 text-blue-700'
-                    : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Raw JSON
-              </button>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={handleEditInEncoder}
+              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Edit in Encoder
+            </button>
+            <button
+              onClick={copyHex}
+              className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 rounded hover:bg-gray-100"
+            >
+              Copy hex
+            </button>
+            <button
+              onClick={() => setShowHexViewer(!showHexViewer)}
+              className={`text-xs px-2 py-1 rounded ${
+                showHexViewer
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Hex viewer
+            </button>
+            <button
+              onClick={() => setShowRawJson(!showRawJson)}
+              className={`text-xs px-2 py-1 rounded ${
+                showRawJson
+                  ? 'bg-blue-100 text-blue-700'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              Raw JSON
+            </button>
           </div>
+          <SignatureStatus result={signatures} loading={loading} />
 
           {showHexViewer && (
             <div className="bg-white rounded-lg border border-gray-200 p-4">

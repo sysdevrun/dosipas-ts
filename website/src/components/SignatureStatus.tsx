@@ -48,7 +48,7 @@ function Badge({
       <span>{label}</span>
       {algorithm && <span className="opacity-70">({algorithm})</span>}
       {error && !valid && (
-        <span className="opacity-70 max-w-48 truncate" title={error}>
+        <span className="opacity-70">
           — {error}
         </span>
       )}

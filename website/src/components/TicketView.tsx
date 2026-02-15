@@ -166,7 +166,10 @@ function IssuingSection({ detail }: { detail: IssuingDetail }) {
 function IntercodeIssuingSection({ data }: { data: IntercodeIssuingData }) {
   return (
     <div className="mt-2 pt-2 border-t border-gray-100">
-      <h4 className="text-xs font-medium text-gray-400 mb-1">Intercode 6 Issuing</h4>
+      <h4 className="text-xs font-medium text-gray-400 mb-1">
+        Intercode 6 Issuing
+        <span className="font-mono ml-1 text-gray-500">{data.extensionId}</span>
+      </h4>
       <Field label="Version" value={data.intercodeVersion} />
       <Field label="Instanciation" value={data.intercodeInstanciation} />
       <BytesField label="Network ID" value={data.networkId} />
@@ -303,9 +306,10 @@ function ControlSection({ detail }: { detail: ControlDetail }) {
   );
 }
 
-function DynamicDataSection({ data }: { data: IntercodeDynamicData }) {
+function DynamicDataSection({ data, dataFormat }: { data: IntercodeDynamicData; dataFormat?: string }) {
   return (
     <Section title="Level 2 Data — Intercode 6 Dynamic">
+      <Field label="Data Format" value={dataFormat} />
       <Field label="Day" value={data.dynamicContentDay} />
       <Field label="Time" value={data.dynamicContentTime} />
       <Field label="UTC Offset" value={data.dynamicContentUTCOffset} />
@@ -413,7 +417,7 @@ export default function TicketView({ ticket }: Props) {
         </Section>
 
         {/* level2Data — inside level2SignedData, outside level1Data */}
-        {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} />}
+        {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} dataFormat={ticket.level2DataBlock?.dataFormat} />}
         {ticket.dynamicContentData && <DynamicContentDataSection data={ticket.dynamicContentData} />}
       </SignatureRegion>
 
