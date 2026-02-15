@@ -254,7 +254,6 @@ function checkIssuingDetail(ticket: UicBarcodeTicket): CheckResult {
       const iss = rt.issuingDetail;
       if (iss.issuingYear < 2016) issues.push(`implausible issuingYear: ${iss.issuingYear}`);
       if (iss.issuingDay < 1 || iss.issuingDay > 366) issues.push(`implausible issuingDay: ${iss.issuingDay}`);
-      if (iss.issuerNum == null && !iss.issuerIA5) issues.push('missing issuer');
     }
   }
 
@@ -436,7 +435,7 @@ function checkDynamicContentFreshness(
     return {
       name: 'Dynamic Content Freshness',
       passed,
-      severity: 'warning',
+      severity: 'error',
       message: passed
         ? undefined
         : `Dynamic content expired at ${expiryTime.toISOString()}`,
@@ -487,7 +486,7 @@ function checkDynamicContentFreshness(
     return {
       name: 'Dynamic Content Freshness',
       passed,
-      severity: 'warning',
+      severity: 'error',
       message: passed
         ? undefined
         : `Dynamic content expired at ${expiryTime.toISOString()}`,

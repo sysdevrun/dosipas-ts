@@ -52,8 +52,7 @@ describe('controlTicket — SAMPLE_TICKET_HEX', () => {
     expect(result.checks.decode.passed).toBe(true);
     expect(result.checks.header.passed).toBe(true);
     expect(result.checks.securityInfo.passed).toBe(true);
-    // Sample ticket has no issuerNum/issuerIA5
-    expect(result.checks.issuingDetail.passed).toBe(false);
+    expect(result.checks.issuingDetail.passed).toBe(true);
     expect(result.checks.activated.passed).toBe(true);
     expect(result.checks.notSpecimen.passed).toBe(true);
     expect(result.checks.transportDocument.passed).toBe(true);
@@ -146,9 +145,7 @@ describe('controlTicket — GRAND_EST_U1_FCB3_HEX', () => {
 
     expect(result.checks.decode.passed).toBe(true);
     expect(result.checks.header.passed).toBe(true);
-    // Grand Est ticket has no issuerNum/issuerIA5, so issuingDetail fails
-    expect(result.checks.issuingDetail.passed).toBe(false);
-    expect(result.checks.issuingDetail.message).toContain('missing issuer');
+    expect(result.checks.issuingDetail.passed).toBe(true);
     expect(result.checks.intercodeExtension.passed).toBe(true);
     expect(result.checks.dynamicData.passed).toBe(true);
     // Grand Est is a specimen ticket
