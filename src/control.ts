@@ -202,7 +202,7 @@ function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
   const rt = firstRailTicket(ticket);
   const iss = rt?.issuingDetail;
   if (iss && l1.validityDuration != null) {
-    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
+    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay, 0, iss.issuingTime ?? 0));
     const expiry = new Date(issuingDate.getTime() + l1.validityDuration * 60 * 1000);
     const passed = now < expiry;
     return {
