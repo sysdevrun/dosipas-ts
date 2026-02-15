@@ -12,8 +12,8 @@ import type {
  * Convert a decoded UicBarcodeTicket into a UicBarcodeTicketInput
  * suitable for the encode form.
  *
- * Security fields (signatures, keys, OIDs) are intentionally omitted
- * since those will be set by the signing key inputs in the Encode tab.
+ * Signatures, signing OIDs, and Level 2 public key are preserved so that
+ * the Encode tab can pre-populate its signature fields for editing.
  */
 export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
   const rt = ticket.railTickets[0];
@@ -86,7 +86,7 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
     };
   }
 
-  return {
+  const result: UicBarcodeTicketInput = {
     headerVersion: ticket.headerVersion,
     fcbVersion: rt.fcbVersion,
     securityProviderNum: ticket.security.securityProviderNum,
@@ -95,6 +95,13 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
     endOfValidityDay: ticket.security.endOfValidityDay,
     endOfValidityTime: ticket.security.endOfValidityTime,
     validityDuration: ticket.security.validityDuration,
+    level1KeyAlg: ticket.security.level1KeyAlg,
+    level1SigningAlg: ticket.security.level1SigningAlg,
+    level1Signature: ticket.security.level1Signature,
+    level2KeyAlg: ticket.security.level2KeyAlg,
+    level2SigningAlg: ticket.security.level2SigningAlg,
+    level2PublicKey: ticket.security.level2PublicKey,
+    level2Signature: ticket.level2Signature,
     railTicket: {
       issuingDetail,
       travelerDetail,
@@ -103,4 +110,6 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
     },
     dynamicData,
   };
+
+  return result;
 }
