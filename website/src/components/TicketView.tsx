@@ -112,9 +112,9 @@ function SecurityMetadataSection({ security }: { security: SecurityInfo }) {
       <Field label="L1 Signing Alg" value={oidName(security.level1SigningAlg)} />
       <Field label="L2 Signing Alg" value={oidName(security.level2SigningAlg)} />
       <BytesField label="L2 Public Key" value={security.level2PublicKey} />
-      <Field label="Validity Year" value={security.endOfValidityYear} />
-      <Field label="Validity Day" value={security.endOfValidityDay} />
-      <Field label="Validity Time" value={security.endOfValidityTime} />
+      <Field label="End of Validity Year" value={security.endOfValidityYear} />
+      <Field label="End of Validity Day" value={security.endOfValidityDay} />
+      <Field label="End of Validity Time" value={security.endOfValidityTime} />
       <Field label="Validity Duration" value={security.validityDuration} />
     </Section>
   );
