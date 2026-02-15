@@ -456,7 +456,7 @@ export default function TicketForm({
           label="validityDuration"
           value={value.validityDuration}
           onChange={(v) => update({ validityDuration: v })}
-          placeholder="1-3600 (minutes)"
+          placeholder="1-3600 (seconds)"
         />
       </Section>
 

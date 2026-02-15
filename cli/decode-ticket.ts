@@ -132,7 +132,7 @@ function printSecurity(sec: SecurityInfo) {
     field('End of validity', formatDate(sec.endOfValidityYear, sec.endOfValidityDay ?? 1));
   }
   if (sec.endOfValidityTime != null) field('End of validity time', formatTime(sec.endOfValidityTime));
-  if (sec.validityDuration != null) field('Validity duration', `${sec.validityDuration} min`);
+  if (sec.validityDuration != null) field('Validity duration', `${sec.validityDuration} sec`);
 }
 
 function printRailTicket(rt: RailTicketData) {
