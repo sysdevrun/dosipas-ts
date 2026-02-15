@@ -104,18 +104,18 @@ function EmbeddedBlock({
 function SecurityMetadataSection({ security }: { security: SecurityInfo }) {
   return (
     <Section title="Security Metadata">
-      <Field label="securityProviderNum" value={security.securityProviderNum} />
-      <Field label="securityProviderIA5" value={security.securityProviderIA5} />
-      <Field label="keyId" value={security.keyId} />
-      <Field label="level1KeyAlg" value={oidName(security.level1KeyAlg)} />
-      <Field label="level2KeyAlg" value={oidName(security.level2KeyAlg)} />
-      <Field label="level1SigningAlg" value={oidName(security.level1SigningAlg)} />
-      <Field label="level2SigningAlg" value={oidName(security.level2SigningAlg)} />
-      <BytesField label="level2PublicKey" value={security.level2PublicKey} />
-      <Field label="endOfValidityYear" value={security.endOfValidityYear} />
-      <Field label="endOfValidityDay" value={security.endOfValidityDay} />
-      <Field label="endOfValidityTime" value={security.endOfValidityTime} />
-      <Field label="validityDuration" value={security.validityDuration} />
+      <Field label="Provider" value={security.securityProviderNum} />
+      <Field label="Provider (IA5)" value={security.securityProviderIA5} />
+      <Field label="Key ID" value={security.keyId} />
+      <Field label="L1 Key Alg" value={oidName(security.level1KeyAlg)} />
+      <Field label="L2 Key Alg" value={oidName(security.level2KeyAlg)} />
+      <Field label="L1 Signing Alg" value={oidName(security.level1SigningAlg)} />
+      <Field label="L2 Signing Alg" value={oidName(security.level2SigningAlg)} />
+      <BytesField label="L2 Public Key" value={security.level2PublicKey} />
+      <Field label="Validity Year" value={security.endOfValidityYear} />
+      <Field label="Validity Day" value={security.endOfValidityDay} />
+      <Field label="Validity Time" value={security.endOfValidityTime} />
+      <Field label="Validity Duration" value={security.validityDuration} />
     </Section>
   );
 }
