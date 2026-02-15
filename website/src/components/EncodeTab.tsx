@@ -21,6 +21,7 @@ const FIPS_TEST_KEY_2 = '710735c8388f48c684a97bd66751cc5f5a122d6b9a96a2dbe73662f
 
 interface Props {
   onDecode: (hex: string) => void;
+  onControl: (hex: string) => void;
   prefillInput: UicBarcodeTicketInput | null;
   onPrefillConsumed: () => void;
 }
@@ -122,7 +123,7 @@ function SignatureSection({
 // Main EncodeTab component
 // ---------------------------------------------------------------------------
 
-export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }: Props) {
+export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefillConsumed }: Props) {
   const [input, setInput] = useState<UicBarcodeTicketInput>(getDefaultInput);
 
   // Level 1 key state
@@ -765,6 +766,12 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
                   className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50"
                 >
                   Decode this ticket
+                </button>
+                <button
+                  onClick={() => onControl(hex)}
+                  className="text-xs text-green-600 hover:text-green-800 px-2 py-1 rounded hover:bg-green-50"
+                >
+                  Control this ticket
                 </button>
               </div>
             </div>

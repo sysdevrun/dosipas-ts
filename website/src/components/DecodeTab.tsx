@@ -13,9 +13,10 @@ interface Props {
   initialHex: string;
   onHexChange: (hex: string) => void;
   onEditInEncoder: (input: UicBarcodeTicketInput) => void;
+  onControl: (hex: string) => void;
 }
 
-export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: Props) {
+export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, onControl }: Props) {
   const [hex, setHex] = useState(initialHex);
   const [showCamera, setShowCamera] = useState(false);
   const [showHexViewer, setShowHexViewer] = useState(false);
@@ -99,6 +100,12 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: 
               className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
             >
               Edit in Encoder
+            </button>
+            <button
+              onClick={() => onControl(hex.replace(/\s/g, ''))}
+              className="text-sm font-medium text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Control
             </button>
             <button
               onClick={copyHex}
