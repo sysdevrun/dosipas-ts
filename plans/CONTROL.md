@@ -4,7 +4,7 @@
 
 Add a new `controlTicket()` function and supporting helpers that perform comprehensive validation of a dosipas ticket. The function takes a hex string, decodes it once, then runs a series of focused check functions — each responsible for verifying one specific aspect of the ticket. Results are collected into a structured report.
 
-The design supports all ticket variants the library handles: FDC1 dynamic content, Intercode 6 extensions (`+FRII1`, `_<RICS>II1`), Intercode dynamic data (`_<RICS>.ID1`), tickets without level 2 signatures (v1 headers / DSA-only), and multiple FCB versions (1, 2, 3).
+The design supports all ticket variants the library handles: FDC1 dynamic content, Intercode 6 extensions (`+FRII1`, `_<RICS>II1`), Intercode dynamic data (`_<RICS>.ID1`), tickets without level 2 signatures (v1 headers where `level2SigningAlg` is not set), and multiple FCB versions (1, 2, 3).
 
 ---
 
@@ -28,18 +28,15 @@ interface ControlOptions {
   /** Reference date/time for temporal checks. Defaults to `new Date()`. */
   now?: Date;
 
-  /** Level 1 public key bytes — forwarded to signature verification. */
-  level1PublicKey?: Uint8Array;
-
-  /** Level 1 key provider — forwarded to signature verification. */
+  /** Level 1 key provider callback — used to retrieve the public key for level 1 signature verification. */
   level1KeyProvider?: Level1KeyProvider;
 
   /**
-   * Maximum age in minutes for dynamic content data (FDC1 or Intercode ID1).
-   * If the dynamic content timestamp is older than this, the freshness check fails.
-   * Defaults to 60 (1 hour).
+   * Set of expected Intercode network IDs (hex strings, e.g. "250502").
+   * When provided, `intercodeIssuing` must be present and its `networkId`
+   * must match one of the expected values.
    */
-  dynamicContentMaxAge?: number;
+  expectedIntercodeNetworkIds?: Set<string>;
 }
 ```
 
@@ -111,41 +108,49 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 
 **Key**: `securityInfo`
 **Severity**: `error`
-**What it checks**: The minimum required security metadata is present.
+**What it checks**: The required security metadata is present, validating level 1 and level 2 independently.
 
+**Level 1 (mandatory):**
 - `security.securityProviderNum` or `security.securityProviderIA5` is set.
 - `security.keyId` is set.
-- At least one signing algorithm OID is present (`level1SigningAlg` or `level2SigningAlg`).
-- At least one key algorithm OID is present (`level1KeyAlg` or `level2KeyAlg`).
+- `security.level1SigningAlg` is present.
+- `security.level1KeyAlg` is present.
+- `security.level1Signature` is present.
 
-**Passes when**: All conditions are met.
+**Level 2 (conditional):**
+- If `security.level2SigningAlg` is set, then `security.level2KeyAlg`, `security.level2PublicKey`, and `ticket.level2Signature` must also be present.
+- If `security.level2SigningAlg` is not set, level 2 fields are not required.
 
----
-
-### 4. `checkLevel2Signature`
-
-**Key**: `level2Signature`
-**Severity**: `error` for v2 headers, `info` for v1 headers
-**What it checks**: Level 2 signature validity using the existing `verifyLevel2Signature()`.
-
-- For **v2 header** tickets: level 2 signature, public key, and algorithm OIDs must be present and the signature must verify. Failure is an error.
-- For **v1 header** tickets: level 2 data may be absent. If absent, the check passes with an info message ("Level 2 signature not present — v1 header"). If present, it is verified normally.
-
-**Implementation**: Calls `verifyLevel2Signature(bytes)` from the existing `verifier.ts`.
+**Passes when**: All level 1 conditions are met, and level 2 conditions are met if applicable.
 
 ---
 
-### 5. `checkLevel1Signature`
+### 4. `checkLevel1Signature`
 
 **Key**: `level1Signature`
-**Severity**: `warning` (since the level 1 public key may not be available)
-**What it checks**: Level 1 signature validity using the existing `verifyLevel1Signature()`.
+**Severity**: `error`
+**What it checks**: Level 1 signature validity. The level 1 signature is **mandatory** — a ticket cannot be considered valid unless its level 1 signature is verified.
 
-- If no `level1PublicKey` and no `level1KeyProvider` are provided in options, the check passes with an info message ("No level 1 key provided — skipped").
-- If a key is available, calls `verifyLevel1Signature(bytes, publicKey)`.
-- For DSA-signed tickets (e.g. SNCF TER), the check will fail with a warning since DSA verification is not supported by the library.
+- If no `level1KeyProvider` is provided in options, the check **fails** with an error message ("No level 1 key provider — cannot verify mandatory level 1 signature").
+- If a key provider is provided, retrieves the public key and calls `verifyLevel1Signature(bytes, publicKey)`.
+- For DSA-signed tickets (e.g. SNCF TER), the check will fail since DSA verification is not supported by the library.
 
-**Implementation**: Reuses logic from `verifySignatures()` in `verifier.ts`, but surfaces the result as a `CheckResult`.
+**Implementation**: Reuses `verifyLevel1Signature()` from `verifier.ts`.
+
+**Passes when**: The level 1 signature is cryptographically verified.
+
+---
+
+### 5. `checkLevel2Signature`
+
+**Key**: `level2Signature`
+**Severity**: `error` when required, `info` when not applicable
+**What it checks**: Level 2 signature validity using the existing `verifyLevel2Signature()`.
+
+- If `security.level2SigningAlg` is **set**: level 2 signature, public key, and algorithm OIDs must be present and the signature must verify. Failure is an error.
+- If `security.level2SigningAlg` is **not set**: level 2 is not required. The check passes with an info message ("Level 2 signature not required — level2SigningAlg not set").
+
+**Implementation**: Calls `verifyLevel2Signature(bytes)` from the existing `verifier.ts`.
 
 ---
 
@@ -155,8 +160,8 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 **Severity**: `error`
 **What it checks**: The ticket has not exceeded its validity period.
 
-- For **v2 headers**: uses `security.endOfValidityYear`, `security.endOfValidityDay`, `security.endOfValidityTime` to compute the expiry instant. If `validityDuration` is also set, adds it to get the final expiry.
-- For **v1 headers**: uses the issuing date (`issuingYear`, `issuingDay`) + `validityDuration` from security info (if available). If no duration is available, the check is skipped with an info message.
+- For **v2 headers**: uses `security.endOfValidityYear`, `security.endOfValidityDay`, and `security.endOfValidityTime` to compute the expiry instant. The `endOfValidityTime` is in minutes from midnight. If `security.validityDuration` is also set, adds it (in minutes) to the end-of-validity time to get the final expiry.
+- For **v1 headers**: uses the issuing date (`issuingYear`, `issuingDay`) + `security.validityDuration` from security info (if available). If no duration is available, the check is skipped with an info message.
 - Compares to `options.now ?? new Date()`.
 
 **Passes when**: The current time is before the computed expiry.
@@ -195,7 +200,7 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 
 - At least one rail ticket exists.
 - First rail ticket has an `issuingDetail`.
-- `issuingYear` and `issuingDay` are present and in plausible ranges (year ≥ 2016, day 1–366).
+- `issuingYear` and `issuingDay` are present and in plausible ranges (year >= 2016, day 1-366).
 - `issuerNum` or `issuerIA5` is present.
 
 **Passes when**: All conditions are met.
@@ -208,7 +213,7 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 **Severity**: `error`
 **What it checks**: At least one transport document is present in the rail ticket.
 
-- `railTickets[0].transportDocument` exists and has length ≥ 1.
+- `railTickets[0].transportDocument` exists and has length >= 1.
 - Each entry has a non-empty `ticketType`.
 
 **Passes when**: At least one transport document with a valid type is found.
@@ -218,14 +223,21 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 ### 11. `checkIntercodeExtension`
 
 **Key**: `intercodeExtension`
-**Severity**: `warning`
-**What it checks**: If an Intercode 6 issuing extension is expected (based on the extension ID pattern), it was successfully decoded.
+**Severity**: `error` when `expectedIntercodeNetworkIds` is provided, `warning` otherwise
+**What it checks**: Intercode 6 issuing extension decoding and optional network ID validation.
 
-- If `issuingDetail.intercodeIssuing` is present, the check passes — the extension decoded correctly.
+**Decoding check:**
+- If `issuingDetail.intercodeIssuing` is present, the extension decoded correctly.
 - If `issuingDetail.extension` is present and its `extensionId` matches `_<RICS>II1` or `+<CC>II1`, the check fails — the extension should have been decoded as Intercode but fell through to raw.
-- If neither is present, the check passes with an info message ("No issuing extension present").
+- If neither is present and `expectedIntercodeNetworkIds` is provided, the check fails — Intercode issuing data is required but absent.
+- If neither is present and no expected IDs are provided, the check passes with an info message ("No issuing extension present").
 
-**Passes when**: Intercode extension is either absent or successfully decoded.
+**Network ID validation (when `expectedIntercodeNetworkIds` is provided):**
+- `intercodeIssuing` must be present (checked above).
+- `intercodeIssuing.networkId` is converted to hex string (e.g. `Uint8Array [0x25, 0x05, 0x02]` -> `"250502"`) and checked against the expected set.
+- If the network ID is not in the expected set, the check fails with the actual vs expected values in the message.
+
+**Passes when**: Intercode extension is absent (and not expected) or successfully decoded with a matching network ID.
 
 ---
 
@@ -251,12 +263,14 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 **Severity**: `warning`
 **What it checks**: The dynamic content timestamp (from FDC1 or Intercode ID1) is recent enough for anti-replay protection.
 
-- For **FDC1**: reads `dynamicContentData.dynamicContentTimeStamp` (day + time in seconds). Computes the absolute timestamp and checks it is within `dynamicContentMaxAge` minutes of `now`.
-- For **Intercode ID1**: reads `dynamicData.dynamicContentDay` and `dynamicData.dynamicContentTime` (minutes from midnight) with optional UTC offset. Same freshness check.
+The maximum allowed age is derived from `security.validityDuration` (in minutes). If `validityDuration` is not set, the check is skipped with an info message.
+
+- For **FDC1**: reads `dynamicContentData.dynamicContentTimeStamp` (day + time in seconds). Computes the absolute timestamp using the issuing year as epoch base. Checks that the dynamic content time is within `validityDuration` minutes of `now`.
+- For **Intercode ID1**: reads `dynamicData.dynamicContentDay` and `dynamicData.dynamicContentTime` (minutes from midnight) with optional UTC offset. Same freshness check using `validityDuration`.
 - If no dynamic data is present, the check is skipped with an info message.
 - Uses the issuing date from `issuingDetail` as the reference epoch for day-offset fields.
 
-**Passes when**: The dynamic content timestamp is within the allowed age window.
+**Passes when**: The dynamic content timestamp is within the `validityDuration` window relative to `now`.
 
 ---
 
@@ -266,8 +280,8 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 1. checkDecode          (fatal — all others skipped on failure)
 2. checkHeader
 3. checkSecurityInfo
-4. checkLevel2Signature (async — needs raw bytes)
-5. checkLevel1Signature (async — needs raw bytes + options)
+4. checkLevel1Signature (async — needs raw bytes + key provider)
+5. checkLevel2Signature (async — needs raw bytes)
 6. checkNotExpired
 7. checkNotSpecimen
 8. checkActivated
@@ -293,15 +307,14 @@ The `valid` field on `ControlResult` is computed as: every check with `severity:
 export interface ControlOptions {
   /** Reference date/time for temporal checks. Defaults to `new Date()`. */
   now?: Date;
-  /** Level 1 public key bytes — forwarded to signature verification. */
-  level1PublicKey?: Uint8Array;
-  /** Level 1 key provider — forwarded to signature verification. */
+  /** Level 1 key provider callback for signature verification. */
   level1KeyProvider?: Level1KeyProvider;
   /**
-   * Maximum age in minutes for dynamic content freshness.
-   * Defaults to 60.
+   * Set of expected Intercode network IDs (hex strings, e.g. "250502").
+   * When provided, intercodeIssuing must be present and its networkId must
+   * match one of the expected values.
    */
-  dynamicContentMaxAge?: number;
+  expectedIntercodeNetworkIds?: Set<string>;
 }
 
 /** Result of a single validation check. */
@@ -344,8 +357,8 @@ export type { ControlOptions, ControlResult, CheckResult } from './types';
    - `decode` passes
    - `header` passes (U1, v1)
    - `securityInfo` passes
-   - `level2Signature` — depends on v1 behavior (info or verified)
-   - `level1Signature` — skipped (no key provided, warning/info)
+   - `level1Signature` — fails (no key provider, error)
+   - `level2Signature` — info (level2SigningAlg not set)
    - `issuingDetail` passes
    - `activated` passes
    - `notSpecimen` passes
@@ -355,15 +368,16 @@ export type { ControlOptions, ControlResult, CheckResult } from './types';
 
 3. **Soléa ticket (SOLEA_TICKET_HEX)**: U2 header, +FRII1, FDC1.
    - `level2Signature` passes (ECDSA P-256)
+   - `level1Signature` — fails (no key provider, error)
    - `intercodeExtension` passes (+FRII1 decoded)
    - `dynamicData` passes (FDC1 decoded)
 
 4. **CTS ticket (CTS_TICKET_HEX)**: U2 header, +FRII1, FDC1.
-   - Similar to Soléa, verifies second FDC1 + FRII1 variant.
+   - Similar to Solea, verifies second FDC1 + FRII1 variant.
 
 5. **SNCF TER ticket (SNCF_TER_TICKET_HEX)**: U1 header, DSA level 1, no level 2 signature.
-   - `level2Signature` — info (v1 header, no L2 data)
-   - `level1Signature` — warning (DSA not supported) if key provided, info if skipped
+   - `level2Signature` — info (level2SigningAlg not set)
+   - `level1Signature` — error (DSA not supported even if key provider returns a key)
 
 6. **Grand Est ticket (GRAND_EST_U1_FCB3_HEX)**: U1 header, FCB3, _3703II1, FDC1.
    - Tests FCB3 path + FDC1 in a U1 header context.
@@ -374,7 +388,11 @@ export type { ControlOptions, ControlResult, CheckResult } from './types';
 
 9. **Tampered ticket**: Flip a byte in a known-good ticket, verify `level2Signature` fails.
 
-10. **No key provided**: Verify `level1Signature` returns info/skipped message when no key is provided.
+10. **Network ID validation**: Pass `expectedIntercodeNetworkIds` with a matching set -> passes. Pass with a non-matching set -> fails with error.
+
+11. **Missing network ID**: Pass `expectedIntercodeNetworkIds` on a ticket without Intercode extension -> fails.
+
+12. **Dynamic content freshness**: Use a controlled `now` option relative to the dynamic content timestamp and `validityDuration` to test both fresh and stale scenarios.
 
 ---
 
