@@ -291,6 +291,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
       setHex(encodedHex);
       setBytes(encodedBytes);
       setEncodeError(null);
+      window.history.replaceState(null, '', `#encode&hex=${encodedHex}`);
 
       // Start dynamic refresh countdown if enabled
       if (l2Enabled && dynamicRefreshEnabled && (input.dynamicData || input.dynamicContentData) && l1PrivKey && l2PrivKey) {
@@ -370,6 +371,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
               const refreshedHex = bytesToHex(refreshedBytes);
               setHex(refreshedHex);
               setBytes(refreshedBytes);
+              window.history.replaceState(null, '', `#encode&hex=${refreshedHex}`);
               // Update signature fields to match
               // Extract the sigs from the signed output by re-signing
               const l1CurveConfig = CURVES[params.l1Curve as CurveName];

@@ -36,7 +36,7 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
     // Update URL hash for sharing
     const clean = h.replace(/\s/g, '');
     if (clean.length > 8) {
-      window.history.replaceState(null, '', `#hex=${clean}`);
+      window.history.replaceState(null, '', `#decode&hex=${clean}`);
     }
   };
 

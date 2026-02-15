@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
+import type { UicBarcodeTicketInput } from 'dosipas-ts';
 import HexInput from './HexInput';
 import CameraScanner from './CameraScanner';
 import { useTicketControl } from '../hooks/useTicketControl';
+import { ticketToInput } from '../lib/convert';
 import type { ControlResult, CheckResult, TravelerInfo } from 'dosipas-ts';
 
 interface Props {
   initialHex: string;
   onHexChange: (hex: string) => void;
+  onDecode: (hex: string) => void;
+  onEditInEncoder: (input: UicBarcodeTicketInput) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,13 +365,23 @@ function NetworkIdsEditor({
 // Main ControlTab component
 // ---------------------------------------------------------------------------
 
-export default function ControlTab({ initialHex, onHexChange }: Props) {
+export default function ControlTab({ initialHex, onHexChange, onDecode, onEditInEncoder }: Props) {
   const [hex, setHex] = useState(initialHex);
   const [showCamera, setShowCamera] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
   const [networkIds, setNetworkIds] = useState(loadNetworkIds);
   const { result, error, loading } = useTicketControl(hex, trustFipsKey, networkIds);
+
+  const handleEditInEncoder = () => {
+    if (!result?.ticket) return;
+    try {
+      const input = ticketToInput(result.ticket);
+      onEditInEncoder(input);
+    } catch (e) {
+      alert(`Cannot convert: ${e instanceof Error ? e.message : e}`);
+    }
+  };
 
   useEffect(() => {
     if (initialHex && initialHex !== hex) {
@@ -443,6 +457,20 @@ export default function ControlTab({ initialHex, onHexChange }: Props) {
       {result && (
         <div className="space-y-4">
           <StatusBanner result={result} />
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => onDecode(hex.replace(/\s/g, ''))}
+              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Decode
+            </button>
+            <button
+              onClick={handleEditInEncoder}
+              className="text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              Edit in Encoder
+            </button>
+          </div>
           <TravelerSection result={result} />
           <ChecksList result={result} />
         </div>
