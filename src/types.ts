@@ -331,8 +331,10 @@ export interface UicBarcodeTicketInput {
   fcbVersion?: number;
   /** The rail ticket data to encode. */
   railTicket: RailTicketInput;
-  /** Intercode 6 dynamic data for Level 2. */
+  /** Intercode 6 dynamic data for Level 2 (encoded as _RICS.ID1). */
   dynamicData?: IntercodeDynamicDataInput;
+  /** UIC Dynamic Content Data for Level 2 (encoded as FDC1). */
+  dynamicContentData?: UicDynamicContentDataInput;
 }
 
 export interface RailTicketInput {
@@ -373,6 +375,15 @@ export interface IntercodeDynamicDataInput {
   dynamicContentTime?: number;
   dynamicContentUTCOffset?: number;
   dynamicContentDuration?: number;
+}
+
+/** Input for encoding UIC Dynamic Content Data (FDC1 format). */
+export interface UicDynamicContentDataInput {
+  dynamicContentMobileAppId?: string;
+  dynamicContentTimeStamp?: TimeStampData;
+  dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
+  dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
+  dynamicContentExtension?: DynamicContentExtensionData;
 }
 
 export interface TravelerDetailInput {

@@ -1,4 +1,4 @@
-import type { UicBarcodeTicket, SecurityInfo, RailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentEntry, ControlDetail } from 'dosipas-ts';
+import type { UicBarcodeTicket, SecurityInfo, RailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, UicDynamicContentData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentEntry, ControlDetail } from 'dosipas-ts';
 import JsonTree from './JsonTree';
 
 interface Props {
@@ -314,6 +314,51 @@ function DynamicDataSection({ data }: { data: IntercodeDynamicData }) {
   );
 }
 
+function DynamicContentDataSection({ data }: { data: UicDynamicContentData }) {
+  return (
+    <Section title="Level 2 Data — FDC1 Dynamic Content">
+      <Field label="Mobile App ID" value={data.dynamicContentMobileAppId} />
+      {data.dynamicContentTimeStamp && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Timestamp (UTC)</span>
+          <Field label="Day" value={data.dynamicContentTimeStamp.day} />
+          <Field label="Time" value={data.dynamicContentTimeStamp.time} />
+        </div>
+      )}
+      {data.dynamicContentGeoCoordinate && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Geo Coordinate</span>
+          <Field label="Geo Unit" value={data.dynamicContentGeoCoordinate.geoUnit} />
+          <Field label="Coordinate System" value={data.dynamicContentGeoCoordinate.coordinateSystem} />
+          <Field label="Hemisphere Lon" value={data.dynamicContentGeoCoordinate.hemisphereLongitude} />
+          <Field label="Hemisphere Lat" value={data.dynamicContentGeoCoordinate.hemisphereLatitude} />
+          <Field label="Longitude" value={data.dynamicContentGeoCoordinate.longitude} />
+          <Field label="Latitude" value={data.dynamicContentGeoCoordinate.latitude} />
+          <Field label="Accuracy" value={data.dynamicContentGeoCoordinate.accuracy} />
+        </div>
+      )}
+      {data.dynamicContentResponseToChallenge && data.dynamicContentResponseToChallenge.length > 0 && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Challenge Responses</span>
+          {data.dynamicContentResponseToChallenge.map((ext, i) => (
+            <div key={i}>
+              <Field label={`[${i}] ID`} value={ext.extensionId} />
+              <BytesField label={`[${i}] Data`} value={ext.extensionData} />
+            </div>
+          ))}
+        </div>
+      )}
+      {data.dynamicContentExtension && (
+        <div className="mt-1 pt-1 border-t border-gray-100">
+          <span className="text-xs text-gray-400">Extension</span>
+          <Field label="Extension ID" value={data.dynamicContentExtension.extensionId} />
+          <BytesField label="Extension Data" value={data.dynamicContentExtension.extensionData} />
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export default function TicketView({ ticket }: Props) {
   return (
     <div className="space-y-4">
@@ -369,6 +414,7 @@ export default function TicketView({ ticket }: Props) {
 
         {/* level2Data — inside level2SignedData, outside level1Data */}
         {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} />}
+        {ticket.dynamicContentData && <DynamicContentDataSection data={ticket.dynamicContentData} />}
       </SignatureRegion>
 
       {/* level2Signature — outside level2SignedData */}

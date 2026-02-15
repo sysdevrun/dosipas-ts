@@ -82,8 +82,10 @@ function decodedToInput(hex: string): UicBarcodeTicketInput {
     },
   };
 
-  // Add dynamic data if present
-  if (ticket.dynamicData && ticket.level2DataBlock) {
+  // Add dynamic data if present (FDC1 or Intercode)
+  if (ticket.dynamicContentData) {
+    input.dynamicContentData = ticket.dynamicContentData;
+  } else if (ticket.dynamicData && ticket.level2DataBlock) {
     const ricsMatch = ticket.level2DataBlock.dataFormat.match(/^_(\d+)\.ID1$/);
     const rics = ricsMatch ? parseInt(ricsMatch[1], 10) : ticket.security.securityProviderNum ?? 0;
     input.dynamicData = {
@@ -157,6 +159,7 @@ describe('signAndEncodeTicket', () => {
     const input = decodedToInput(SOLEA_TICKET_HEX);
     // Remove dynamic data for static mode
     delete (input as any).dynamicData;
+    delete (input as any).dynamicContentData;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
 
     const bytes = signAndEncodeTicket(input, l1Key);
@@ -190,11 +193,11 @@ describe('decode → re-encode → decode round-trip', () => {
     expect(rt.issuingDetail!.intercodeIssuing).toBeDefined();
     expect(rt.issuingDetail!.intercodeIssuing!.intercodeVersion).toBe(1);
 
-    // Solea uses FDC1 format — the encoder currently only supports Intercode
-    // dynamic data (_RICS.ID1), so FDC1 data is not re-encoded in round-trips.
-    // Verify the re-encoded ticket decodes without dynamic data.
+    // Verify FDC1 dynamic content data survived the round-trip
+    expect(decoded.dynamicContentData).toBeDefined();
+    expect(decoded.level2DataBlock!.dataFormat).toBe('FDC1');
+    // Intercode dynamic data should not be set for FDC1
     expect(decoded.dynamicData).toBeUndefined();
-    expect(decoded.dynamicContentData).toBeUndefined();
   });
 
   it('CTS ticket round-trips through encode/decode', () => {
@@ -267,6 +270,7 @@ describe('signature verification on re-encoded tickets', () => {
   it('Level 1 only (static) verifies on re-encoded ticket', async () => {
     const input = decodedToInput(SOLEA_TICKET_HEX);
     delete (input as any).dynamicData;
+    delete (input as any).dynamicContentData;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
 
     const encoded = signAndEncodeTicket(input, l1Key);

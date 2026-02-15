@@ -11,7 +11,7 @@ import {
   type SchemaNode,
 } from 'asn1-per-ts';
 import type { Codec } from 'asn1-per-ts';
-import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS } from './schemas';
+import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
 import type {
   UicBarcodeTicketInput,
   IssuingDetailInput,
@@ -28,6 +28,7 @@ const headerCodecCache = new Map<number, SchemaCodec>();
 const ticketCodecCache = new Map<number, Record<string, Codec<unknown>>>();
 let intercodeIssuingCodec: SchemaCodec | undefined;
 let intercodeDynamicCodec: SchemaCodec | undefined;
+let fdc1Codec: SchemaCodec | undefined;
 
 function getHeaderCodec(version: number): SchemaCodec {
   let codec = headerCodecCache.get(version);
@@ -62,6 +63,12 @@ function getIntercodeDynamicCodec(): SchemaCodec {
   return intercodeDynamicCodec!;
 }
 
+function getFdc1Codec(): SchemaCodec {
+  if (fdc1Codec) return fdc1Codec;
+  fdc1Codec = new SchemaCodec(DYNAMIC_CONTENT_SCHEMAS.UicDynamicContentData as SchemaNode);
+  return fdc1Codec;
+}
+
 function toHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -88,9 +95,12 @@ export function encodeTicket(input: UicBarcodeTicketInput): string {
     { dataFormat: `FCB${fcbVersion}`, data: railTicketBytes },
   ];
 
-  // Step 3: Build Level 2 data (Intercode dynamic)
+  // Step 3: Build Level 2 data (Intercode dynamic or FDC1)
   let level2Data: { dataFormat: string; data: Uint8Array } | undefined;
-  if (input.dynamicData) {
+  if (input.dynamicContentData) {
+    const fdc1Bytes = getFdc1Codec().encode(input.dynamicContentData);
+    level2Data = { dataFormat: 'FDC1', data: fdc1Bytes };
+  } else if (input.dynamicData) {
     const dynamicBytes = getIntercodeDynamicCodec().encode({
       dynamicContentDay: input.dynamicData.dynamicContentDay ?? 0,
       dynamicContentTime: input.dynamicData.dynamicContentTime,

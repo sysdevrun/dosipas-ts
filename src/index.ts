@@ -34,6 +34,7 @@ export type {
   IssuingDetailInput,
   IntercodeIssuingDataInput,
   IntercodeDynamicDataInput,
+  UicDynamicContentDataInput,
   TravelerDetailInput,
   TransportDocumentInput,
   SignatureVerificationResult,
