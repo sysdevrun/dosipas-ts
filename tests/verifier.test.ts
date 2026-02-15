@@ -161,12 +161,13 @@ describe('extractSignedData', () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
 
     // Verify extraction matches decodeTicket output
-    expect(extracted.security.securityProviderNum).toBe(ticket.security.securityProviderNum);
-    expect(extracted.security.keyId).toBe(ticket.security.keyId);
-    expect(extracted.security.level1SigningAlg).toBe(ticket.security.level1SigningAlg);
-    expect(extracted.security.level2SigningAlg).toBe(ticket.security.level2SigningAlg);
-    expect(extracted.security.level1KeyAlg).toBe(ticket.security.level1KeyAlg);
-    expect(extracted.security.level2KeyAlg).toBe(ticket.security.level2KeyAlg);
+    const l1 = ticket.level2SignedData.level1Data;
+    expect(extracted.security.securityProviderNum).toBe(l1.securityProviderNum);
+    expect(extracted.security.keyId).toBe(l1.keyId);
+    expect(extracted.security.level1SigningAlg).toBe(l1.level1SigningAlg);
+    expect(extracted.security.level2SigningAlg).toBe(l1.level2SigningAlg);
+    expect(extracted.security.level1KeyAlg).toBe(l1.level1KeyAlg);
+    expect(extracted.security.level2KeyAlg).toBe(l1.level2KeyAlg);
 
     // Also verify specific expected values
     expect(extracted.security.securityProviderNum).toBe(3703);
@@ -181,7 +182,7 @@ describe('extractSignedData', () => {
 
     expect(extracted.security.level1Signature).toBeDefined();
     expect(toHex(extracted.security.level1Signature!)).toBe(
-      toHex(ticket.security.level1Signature!)
+      toHex(ticket.level2SignedData.level1Signature!)
     );
 
     expect(extracted.security.level2Signature).toBeDefined();

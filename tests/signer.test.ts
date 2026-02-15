@@ -13,7 +13,7 @@ import {
   verifyLevel2Signature,
   CURVES,
 } from '../src';
-import type { UicBarcodeTicketInput, SigningKeyPair } from '../src';
+import type { UicBarcodeTicketInput, SigningKeyPair, IntercodeDynamicData } from '../src';
 
 /** NIST FIPS 186-4 ECDSA P-256 test vector private keys. */
 const FIPS_L1_PRIV = hexToBytes('c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357');
@@ -33,17 +33,21 @@ function bytesToHex(bytes: Uint8Array): string {
  */
 function decodedToInput(hex: string): UicBarcodeTicketInput {
   const ticket = decodeTicket(hex);
-  const rt = ticket.railTickets[0];
+  const l1 = ticket.level2SignedData.level1Data;
+  const ds = l1.dataSequence[0];
+  const fcbMatch = ds.dataFormat.match(/^FCB(\d+)$/);
+  const fcbVersion = fcbMatch ? parseInt(fcbMatch[1], 10) : 2;
+  const rt = ds.decoded!;
 
   const input: UicBarcodeTicketInput = {
-    headerVersion: ticket.headerVersion,
-    fcbVersion: rt.fcbVersion,
-    securityProviderNum: ticket.security.securityProviderNum,
-    keyId: ticket.security.keyId,
-    endOfValidityYear: ticket.security.endOfValidityYear,
-    endOfValidityDay: ticket.security.endOfValidityDay,
-    endOfValidityTime: ticket.security.endOfValidityTime,
-    validityDuration: ticket.security.validityDuration,
+    headerVersion: parseInt(ticket.format.replace('U', ''), 10),
+    fcbVersion,
+    securityProviderNum: l1.securityProviderNum,
+    keyId: l1.keyId,
+    endOfValidityYear: l1.endOfValidityYear,
+    endOfValidityDay: l1.endOfValidityDay,
+    endOfValidityTime: l1.endOfValidityTime,
+    validityDuration: l1.validityDuration,
     railTicket: {
       issuingDetail: {
         securityProviderNum: rt.issuingDetail?.securityProviderNum,
@@ -76,26 +80,30 @@ function decodedToInput(hex: string): UicBarcodeTicketInput {
           }
         : undefined,
       transportDocument: rt.transportDocument?.map(doc => ({
-        ticketType: doc.ticketType,
-        ticket: doc.ticket,
+        ticketType: doc.ticket.key,
+        ticket: doc.ticket.value,
       })),
       controlDetail: rt.controlDetail as Record<string, unknown> | undefined,
     },
   };
 
   // Add dynamic data if present (FDC1 or Intercode)
-  if (ticket.dynamicContentData) {
-    input.dynamicContentData = ticket.dynamicContentData;
-  } else if (ticket.dynamicData && ticket.level2DataBlock) {
-    const ricsMatch = ticket.level2DataBlock.dataFormat.match(/^_(\d+)\.ID1$/);
-    const rics = ricsMatch ? parseInt(ricsMatch[1], 10) : ticket.security.securityProviderNum ?? 0;
-    input.dynamicData = {
-      rics,
-      dynamicContentDay: ticket.dynamicData.dynamicContentDay,
-      dynamicContentTime: ticket.dynamicData.dynamicContentTime,
-      dynamicContentUTCOffset: ticket.dynamicData.dynamicContentUTCOffset,
-      dynamicContentDuration: ticket.dynamicData.dynamicContentDuration,
-    };
+  const l2Data = ticket.level2SignedData.level2Data;
+  if (l2Data?.decoded) {
+    if (l2Data.dataFormat === 'FDC1') {
+      input.dynamicContentData = l2Data.decoded as any;
+    } else {
+      const ricsMatch = l2Data.dataFormat.match(/^_(\d+)\.ID1$/);
+      const rics = ricsMatch ? parseInt(ricsMatch[1], 10) : l1.securityProviderNum ?? 0;
+      const dynamic = l2Data.decoded as IntercodeDynamicData;
+      input.dynamicData = {
+        rics,
+        dynamicContentDay: dynamic.dynamicContentDay,
+        dynamicContentTime: dynamic.dynamicContentTime,
+        dynamicContentUTCOffset: dynamic.dynamicContentUTCOffset,
+        dynamicContentDuration: dynamic.dynamicContentDuration,
+      };
+    }
   }
 
   return input;
@@ -169,7 +177,7 @@ describe('signAndEncodeTicket', () => {
   });
 });
 
-describe('decode → re-encode → decode round-trip', () => {
+describe('decode -> re-encode -> decode round-trip', () => {
   it('Solea ticket round-trips through encode/decode', () => {
     const input = decodedToInput(SOLEA_TICKET_HEX);
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
@@ -182,10 +190,10 @@ describe('decode → re-encode → decode round-trip', () => {
     const decoded = decodeTicketFromBytes(encoded);
 
     expect(decoded.format).toBe('U2');
-    expect(decoded.headerVersion).toBe(2);
-    expect(decoded.railTickets).toHaveLength(1);
+    const ds = decoded.level2SignedData.level1Data.dataSequence;
+    expect(ds).toHaveLength(1);
 
-    const rt = decoded.railTickets[0];
+    const rt = ds[0].decoded!;
     expect(rt.issuingDetail).toBeDefined();
     expect(rt.transportDocument).toBeDefined();
     expect(rt.transportDocument!.length).toBeGreaterThan(0);
@@ -195,10 +203,10 @@ describe('decode → re-encode → decode round-trip', () => {
     expect(rt.issuingDetail!.intercodeIssuing!.intercodeVersion).toBe(1);
 
     // Verify FDC1 dynamic content data survived the round-trip
-    expect(decoded.dynamicContentData).toBeDefined();
-    expect(decoded.level2DataBlock!.dataFormat).toBe('FDC1');
-    // Intercode dynamic data should not be set for FDC1
-    expect(decoded.dynamicData).toBeUndefined();
+    const l2Data = decoded.level2SignedData.level2Data;
+    expect(l2Data).toBeDefined();
+    expect(l2Data!.dataFormat).toBe('FDC1');
+    expect(l2Data!.decoded).toBeDefined();
   });
 
   it('CTS ticket round-trips through encode/decode', () => {
@@ -210,8 +218,8 @@ describe('decode → re-encode → decode round-trip', () => {
     const decoded = decodeTicketFromBytes(encoded);
 
     expect(decoded.format).toBe('U2');
-    expect(decoded.railTickets).toHaveLength(1);
-    expect(decoded.railTickets[0].issuingDetail!.intercodeIssuing).toBeDefined();
+    expect(decoded.level2SignedData.level1Data.dataSequence).toHaveLength(1);
+    expect(decoded.level2SignedData.level1Data.dataSequence[0].decoded!.issuingDetail!.intercodeIssuing).toBeDefined();
   });
 
   it('Sample ticket round-trips through encode/decode', () => {
@@ -222,10 +230,10 @@ describe('decode → re-encode → decode round-trip', () => {
     const encoded = signAndEncodeTicket(input, l1Key, l2Key);
     const decoded = decodeTicketFromBytes(encoded);
 
-    expect(decoded.railTickets).toHaveLength(1);
-    const rt = decoded.railTickets[0];
+    expect(decoded.level2SignedData.level1Data.dataSequence).toHaveLength(1);
+    const rt = decoded.level2SignedData.level1Data.dataSequence[0].decoded!;
     expect(rt.issuingDetail!.intercodeIssuing).toBeDefined();
-    expect(decoded.dynamicData).toBeDefined();
+    expect(decoded.level2SignedData.level2Data?.decoded).toBeDefined();
   });
 });
 
