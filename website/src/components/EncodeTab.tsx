@@ -195,10 +195,18 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       if (prefillInput.dynamicData) {
         setL2Enabled(true);
       }
-      // Clear signatures since prefilled data likely doesn't include them
-      setL1SigHex('');
+      // Populate signatures from prefilled input if present
+      if (prefillInput.level1Signature && prefillInput.level1Signature.length > 0) {
+        setL1SigHex(bytesToHex(prefillInput.level1Signature));
+      } else {
+        setL1SigHex('');
+      }
       setL1SigStale(false);
-      setL2SigHex('');
+      if (prefillInput.level2Signature && prefillInput.level2Signature.length > 0) {
+        setL2SigHex(bytesToHex(prefillInput.level2Signature));
+      } else {
+        setL2SigHex('');
+      }
       setL2SigStale(false);
       onPrefillConsumed();
     }
