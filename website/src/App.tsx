@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { decodeTicket } from 'dosipas-ts';
 import type { UicBarcodeTicketInput } from 'dosipas-ts';
 import DecodeTab from './components/DecodeTab';
 import EncodeTab from './components/EncodeTab';
 import ControlTab from './components/ControlTab';
+import { ticketToInput } from './lib/convert';
 
 type Tab = 'decode' | 'encode' | 'control';
 
@@ -11,6 +13,14 @@ function getInitialTab(): Tab {
   if (hash.startsWith('#encode')) return 'encode';
   if (hash.startsWith('#control')) return 'control';
   return 'decode';
+}
+
+function buildHash(tab: Tab, hex: string): string {
+  const clean = hex.replace(/\s/g, '');
+  if (clean.length > 8) {
+    return `${tab}&hex=${clean}`;
+  }
+  return tab;
 }
 
 function getInitialHex(): string {
@@ -26,35 +36,69 @@ export default function App() {
 
   useEffect(() => {
     const onHashChange = () => {
-      const match = window.location.hash.match(/[#&]hex=([0-9a-fA-F]+)/);
-      if (match) {
-        setSharedHex(match[1]);
-        if (window.location.hash.startsWith('#control')) {
-          setTab('control');
-        } else {
-          setTab('decode');
+      const hash = window.location.hash;
+      const hexMatch = hash.match(/[#&]hex=([0-9a-fA-F]+)/);
+      const hex = hexMatch ? hexMatch[1] : '';
+
+      if (hash.startsWith('#encode')) {
+        setTab('encode');
+        if (hex) {
+          setSharedHex(hex);
+          tryPrefillEncode(hex);
         }
+      } else if (hash.startsWith('#control')) {
+        setTab('control');
+        if (hex) setSharedHex(hex);
+      } else {
+        setTab('decode');
+        if (hex) setSharedHex(hex);
       }
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
 
+  const tryPrefillEncode = useCallback((hex: string) => {
+    try {
+      const ticket = decodeTicket(hex);
+      setPrefillInput(ticketToInput(ticket));
+    } catch {
+      // Ignore decode errors - encode tab still usable
+    }
+  }, []);
+
+  // Handle initial load with #encode&hex=...
+  useEffect(() => {
+    if (tab === 'encode' && sharedHex.replace(/\s/g, '').length > 8) {
+      tryPrefillEncode(sharedHex);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const switchToDecode = (hex: string) => {
     setSharedHex(hex);
     setTab('decode');
-    window.location.hash = `hex=${hex}`;
+    window.location.hash = buildHash('decode', hex);
   };
 
   const switchToControl = (hex: string) => {
     setSharedHex(hex);
     setTab('control');
-    window.location.hash = `control&hex=${hex}`;
+    window.location.hash = buildHash('control', hex);
   };
 
   const switchToEncode = (input: UicBarcodeTicketInput) => {
     setPrefillInput(input);
     setTab('encode');
+    window.location.hash = buildHash('encode', sharedHex);
+  };
+
+  const switchTab = (newTab: Tab) => {
+    setTab(newTab);
+    window.location.hash = buildHash(newTab, sharedHex);
+    if (newTab === 'encode' && sharedHex.replace(/\s/g, '').length > 8) {
+      tryPrefillEncode(sharedHex);
+    }
   };
 
   return (
@@ -64,7 +108,7 @@ export default function App() {
           <h1 className="text-lg font-semibold whitespace-nowrap">dosipas-ts</h1>
           <nav className="flex gap-1">
             <button
-              onClick={() => setTab('decode')}
+              onClick={() => switchTab('decode')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 tab === 'decode'
                   ? 'bg-blue-100 text-blue-800'
@@ -74,7 +118,7 @@ export default function App() {
               Decode
             </button>
             <button
-              onClick={() => setTab('encode')}
+              onClick={() => switchTab('encode')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 tab === 'encode'
                   ? 'bg-blue-100 text-blue-800'
@@ -84,7 +128,7 @@ export default function App() {
               Encode
             </button>
             <button
-              onClick={() => setTab('control')}
+              onClick={() => switchTab('control')}
               className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
                 tab === 'control'
                   ? 'bg-blue-100 text-blue-800'
@@ -126,6 +170,8 @@ export default function App() {
           <ControlTab
             initialHex={sharedHex}
             onHexChange={(h) => setSharedHex(h)}
+            onDecode={switchToDecode}
+            onEditInEncoder={switchToEncode}
           />
         )}
       </main>
