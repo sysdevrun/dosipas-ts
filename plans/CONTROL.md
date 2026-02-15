@@ -114,7 +114,6 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 - `security.securityProviderNum` or `security.securityProviderIA5` is set.
 - `security.keyId` is set.
 - `security.level1SigningAlg` is present.
-- `security.level1KeyAlg` is present.
 - `security.level1Signature` is present.
 
 **Level 2 (conditional):**
@@ -234,7 +233,7 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 
 **Network ID validation (when `expectedIntercodeNetworkIds` is provided):**
 - `intercodeIssuing` must be present (checked above).
-- `intercodeIssuing.networkId` is converted to hex string (e.g. `Uint8Array [0x25, 0x05, 0x02]` -> `"250502"`) and checked against the expected set.
+- `intercodeIssuing.networkId` is a 3-byte `Uint8Array`. It is converted to a 6-character hex string (e.g. `Uint8Array [0x25, 0x05, 0x02]` -> `"250502"`) and checked against the expected set.
 - If the network ID is not in the expected set, the check fails with the actual vs expected values in the message.
 
 **Passes when**: Intercode extension is absent (and not expected) or successfully decoded with a matching network ID.
