@@ -10,15 +10,10 @@ import type {
 interface Props {
   value: UicBarcodeTicketInput;
   onChange: (input: UicBarcodeTicketInput) => void;
-  l2KeyPresent?: boolean;
-  dynamicRefreshEnabled?: boolean;
-  onDynamicRefreshChange?: (enabled: boolean) => void;
-  dynamicRefreshInterval?: number;
-  onDynamicRefreshIntervalChange?: (seconds: number) => void;
 }
 
 // ---------------------------------------------------------------------------
-// Reusable field primitives
+// Reusable field primitives (exported for use in EncodeTab)
 // ---------------------------------------------------------------------------
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -30,7 +25,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function ToggleSection({
+export function ToggleSection({
   title,
   enabled,
   onToggle,
@@ -57,7 +52,7 @@ function ToggleSection({
   );
 }
 
-function NumberField({
+export function NumberField({
   label,
   value,
   onChange,
@@ -82,7 +77,7 @@ function NumberField({
   );
 }
 
-function OptionalNumberField({
+export function OptionalNumberField({
   label,
   value,
   onChange,
@@ -334,17 +329,12 @@ const RETAIL_CHANNELS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Main form component
+// Main form component (Level 1 data only)
 // ---------------------------------------------------------------------------
 
 export default function TicketForm({
   value,
   onChange,
-  l2KeyPresent,
-  dynamicRefreshEnabled,
-  onDynamicRefreshChange,
-  dynamicRefreshInterval,
-  onDynamicRefreshIntervalChange,
 }: Props) {
   const update = (partial: Partial<UicBarcodeTicketInput>) => {
     onChange({ ...value, ...partial });
@@ -386,7 +376,6 @@ export default function TicketForm({
   const hasTraveler = !!value.railTicket.travelerDetail;
   const hasIntercode = !!value.railTicket.issuingDetail.intercodeIssuing;
   const hasControl = !!value.railTicket.controlDetail;
-  const hasDynamic = !!value.dynamicData;
 
   const traveler = value.railTicket.travelerDetail?.traveler?.[0];
 
@@ -933,98 +922,6 @@ export default function TicketForm({
             })
           }
         />
-      </ToggleSection>
-
-      {/* Intercode 6 Dynamic Data */}
-      <ToggleSection
-        title="Intercode 6 Dynamic Data"
-        enabled={hasDynamic}
-        onToggle={(v) => {
-          update({
-            dynamicData: v
-              ? { rics: value.securityProviderNum ?? 0, dynamicContentDay: 0 }
-              : undefined,
-          });
-        }}
-      >
-        <NumberField
-          label="RICS"
-          value={value.dynamicData?.rics}
-          onChange={(v) =>
-            update({
-              dynamicData: { ...value.dynamicData!, rics: v ?? 0 },
-            })
-          }
-          placeholder="e.g. 3703"
-        />
-        <NumberField
-          label="Day"
-          value={value.dynamicData?.dynamicContentDay}
-          onChange={(v) =>
-            update({
-              dynamicData: { ...value.dynamicData!, dynamicContentDay: v },
-            })
-          }
-        />
-        <OptionalNumberField
-          label="Time"
-          value={value.dynamicData?.dynamicContentTime}
-          onChange={(v) =>
-            update({
-              dynamicData: { ...value.dynamicData!, dynamicContentTime: v },
-            })
-          }
-        />
-        <OptionalNumberField
-          label="UTC Offset"
-          value={value.dynamicData?.dynamicContentUTCOffset}
-          onChange={(v) =>
-            update({
-              dynamicData: { ...value.dynamicData!, dynamicContentUTCOffset: v },
-            })
-          }
-        />
-        <OptionalNumberField
-          label="Duration"
-          value={value.dynamicData?.dynamicContentDuration}
-          onChange={(v) =>
-            update({
-              dynamicData: { ...value.dynamicData!, dynamicContentDuration: v },
-            })
-          }
-        />
-        {l2KeyPresent && (
-          <div className="col-span-2 space-y-2 border-t border-gray-100 pt-2 mt-1">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={dynamicRefreshEnabled ?? false}
-                onChange={(e) => onDynamicRefreshChange?.(e.target.checked)}
-                className="rounded border-gray-300"
-              />
-              <span className="text-xs text-gray-600">
-                Refresh dynamicContentDate and dynamicContentTime
-              </span>
-            </label>
-            {dynamicRefreshEnabled && (
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-gray-500">Interval</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={dynamicRefreshInterval ?? 10}
-                  onChange={(e) =>
-                    onDynamicRefreshIntervalChange?.(
-                      Math.max(1, Number(e.target.value)),
-                    )
-                  }
-                  className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-                <span className="text-xs text-gray-500">seconds</span>
-              </div>
-            )}
-          </div>
-        )}
       </ToggleSection>
     </div>
   );

@@ -1,5 +1,8 @@
 import {
   signAndEncodeTicket,
+  signLevel1 as libSignLevel1,
+  signLevel2 as libSignLevel2,
+  encodeTicketToBytes as libEncodeTicketToBytes,
   getPublicKey as libGetPublicKey,
   generateKeyPair as libGenerateKeyPair,
   CURVES,
@@ -28,6 +31,29 @@ export function signTicket(
   level2Key?: SigningKeyPair,
 ): Uint8Array {
   return signAndEncodeTicket(input, level1Key, level2Key);
+}
+
+/** Sign Level 1 data and return the DER-encoded signature bytes. */
+export function signLevel1Data(
+  input: UicBarcodeTicketInput,
+  privateKeyHex: string,
+  curve: string,
+): Uint8Array {
+  return libSignLevel1(input, hexToBytes(privateKeyHex), curve as CurveName);
+}
+
+/** Sign Level 2 data and return the DER-encoded signature bytes. */
+export function signLevel2Data(
+  input: UicBarcodeTicketInput,
+  privateKeyHex: string,
+  curve: string,
+): Uint8Array {
+  return libSignLevel2(input, hexToBytes(privateKeyHex), curve as CurveName);
+}
+
+/** Encode a ticket to bytes (with signatures already set in the input). */
+export function encodeTicket(input: UicBarcodeTicketInput): Uint8Array {
+  return libEncodeTicketToBytes(input);
 }
 
 export function bytesToHex(bytes: Uint8Array): string {
