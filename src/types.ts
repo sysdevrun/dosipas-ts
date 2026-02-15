@@ -27,8 +27,11 @@ export interface UicBarcodeTicket {
   /** Raw data blocks that were not identified as FCB. */
   otherDataBlocks: DataBlock[];
 
-  /** Decoded Intercode 6 dynamic data from Level 2, if present. */
+  /** Decoded Intercode 6 dynamic data from Level 2, if present (for _RICS.ID1 formats). */
   dynamicData?: IntercodeDynamicData;
+
+  /** Decoded UIC Dynamic Content Data from Level 2, if present (for FDC1 format). */
+  dynamicContentData?: UicDynamicContentData;
 
   /** Raw Level 2 data block, if present. */
   level2DataBlock?: DataBlock;
@@ -159,6 +162,39 @@ export interface IntercodeDynamicData {
   dynamicContentTime?: number;
   dynamicContentUTCOffset?: number;
   dynamicContentDuration?: number;
+}
+
+// ---------------------------------------------------------------------------
+// UIC Dynamic Content Data (FDC1)
+// ---------------------------------------------------------------------------
+
+export interface TimeStampData {
+  day: number;
+  time: number;
+}
+
+export interface DynamicContentGeoCoordinate {
+  geoUnit?: string;
+  coordinateSystem?: string;
+  hemisphereLongitude?: string;
+  hemisphereLatitude?: string;
+  longitude: number;
+  latitude: number;
+  accuracy?: string;
+}
+
+export interface DynamicContentExtensionData {
+  extensionId: string;
+  extensionData: Uint8Array;
+}
+
+/** Decoded UIC Dynamic Content Data v1 (FDC1 format). */
+export interface UicDynamicContentData {
+  dynamicContentMobileAppId?: string;
+  dynamicContentTimeStamp?: TimeStampData;
+  dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
+  dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
+  dynamicContentExtension?: DynamicContentExtensionData;
 }
 
 // ---------------------------------------------------------------------------

@@ -12,7 +12,7 @@ import {
   type SchemaNode,
 } from 'asn1-per-ts';
 import type { Codec } from 'asn1-per-ts';
-import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS } from './schemas';
+import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
 import type {
   UicBarcodeTicket,
   RailTicketData,
@@ -22,6 +22,7 @@ import type {
   ControlDetail,
   IntercodeIssuingData,
   IntercodeDynamicData,
+  UicDynamicContentData,
   DataBlock,
   SecurityInfo,
   ExtensionData,
@@ -35,6 +36,7 @@ const headerCodecCache = new Map<number, SchemaCodec>();
 const ticketCodecCache = new Map<number, Record<string, Codec<unknown>>>();
 let intercodeIssuingCodec: SchemaCodec | undefined;
 let intercodeDynamicCodec: SchemaCodec | undefined;
+let fdc1Codec: SchemaCodec | undefined;
 
 function getHeaderCodec(version: number): SchemaCodec {
   let codec = headerCodecCache.get(version);
@@ -73,6 +75,12 @@ function getIntercodeDynamicCodec(): SchemaCodec {
   return intercodeDynamicCodec!;
 }
 
+function getFdc1Codec(): SchemaCodec {
+  if (fdc1Codec) return fdc1Codec;
+  fdc1Codec = new SchemaCodec(DYNAMIC_CONTENT_SCHEMAS.UicDynamicContentData as SchemaNode);
+  return fdc1Codec;
+}
+
 // ---------------------------------------------------------------------------
 // Pattern helpers
 // ---------------------------------------------------------------------------
@@ -89,10 +97,17 @@ function isIntercodeIssuingExtension(extensionId: string): boolean {
 /**
  * Match Intercode Part 6 dynamic data formats:
  *   - `_<RICS>.ID1`  — numeric RICS code prefix (e.g. `_3703.ID1`)
- *   - `FDC1`         — French dynamic content variant
  */
 function isIntercodeDynamicData(dataFormat: string): boolean {
-  return /^_\d+\.ID1$/.test(dataFormat) || dataFormat === 'FDC1';
+  return /^_\d+\.ID1$/.test(dataFormat);
+}
+
+/**
+ * Match FCB Dynamic Content v1 format:
+ *   - `FDC1`  — UicDynamicContentData (UIC barcode spec)
+ */
+function isFdc1(dataFormat: string): boolean {
+  return dataFormat === 'FDC1';
 }
 
 // ---------------------------------------------------------------------------
@@ -187,11 +202,18 @@ export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
 
   // Step 5: Decode Level 2 dynamic data
   let dynamicData: IntercodeDynamicData | undefined;
+  let dynamicContentData: UicDynamicContentData | undefined;
   let level2DataBlock: DataBlock | undefined;
 
   if (l2.level2Data) {
     level2DataBlock = { dataFormat: l2.level2Data.dataFormat, data: l2.level2Data.data };
-    if (isIntercodeDynamicData(l2.level2Data.dataFormat)) {
+    if (isFdc1(l2.level2Data.dataFormat)) {
+      try {
+        dynamicContentData = getFdc1Codec().decode(l2.level2Data.data) as UicDynamicContentData;
+      } catch {
+        // leave as undefined if decoding fails
+      }
+    } else if (isIntercodeDynamicData(l2.level2Data.dataFormat)) {
       try {
         dynamicData = getIntercodeDynamicCodec().decode(l2.level2Data.data) as IntercodeDynamicData;
       } catch {
@@ -208,6 +230,7 @@ export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
     railTickets,
     otherDataBlocks,
     dynamicData,
+    dynamicContentData,
     level2DataBlock,
   };
 }

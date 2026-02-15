@@ -10,6 +10,7 @@ import railTicketV1 from '../schemas/uic-barcode/uicRailTicketData_v1.schema.jso
 import railTicketV2 from '../schemas/uic-barcode/uicRailTicketData_v2.schema.json';
 import railTicketV3 from '../schemas/uic-barcode/uicRailTicketData_v3.schema.json';
 import intercode6 from '../schemas/uic-barcode/intercode6.schema.json';
+import dynamicContentV1 from '../schemas/uic-barcode/uicDynamicContentData_v1.schema.json';
 
 type SchemaMap = Record<string, SchemaNode>;
 
@@ -25,3 +26,5 @@ export const RAIL_TICKET_SCHEMAS: Record<number, SchemaMap> = {
 };
 
 export const INTERCODE_SCHEMAS = intercode6 as unknown as SchemaMap;
+
+export const DYNAMIC_CONTENT_SCHEMAS = dynamicContentV1 as unknown as SchemaMap;

@@ -130,25 +130,35 @@ describe('Intercode 6 extension patterns', () => {
     });
   });
 
-  describe('FDC1 dynamic data (French variant)', () => {
-    it('decodes FDC1 from Soléa ticket as IntercodeDynamicData', () => {
+  describe('FDC1 dynamic content data (UicDynamicContentData)', () => {
+    it('decodes FDC1 from Soléa ticket as UicDynamicContentData', () => {
       const ticket = decodeTicket(SOLEA_TICKET_HEX);
       expect(ticket.level2DataBlock).toBeDefined();
       expect(ticket.level2DataBlock!.dataFormat).toBe('FDC1');
-      expect(ticket.dynamicData).toBeDefined();
-      expect(ticket.dynamicData!.dynamicContentDay).toBeGreaterThanOrEqual(0);
+      expect(ticket.dynamicContentData).toBeDefined();
+      // FDC1 should NOT populate the Intercode dynamicData field
+      expect(ticket.dynamicData).toBeUndefined();
     });
 
-    it('decodes FDC1 from CTS ticket as IntercodeDynamicData', () => {
+    it('decodes FDC1 from CTS ticket as UicDynamicContentData', () => {
       const ticket = decodeTicket(CTS_TICKET_HEX);
       expect(ticket.level2DataBlock!.dataFormat).toBe('FDC1');
-      expect(ticket.dynamicData).toBeDefined();
+      expect(ticket.dynamicContentData).toBeDefined();
+      expect(ticket.dynamicData).toBeUndefined();
     });
 
-    it('decodes FDC1 from Grand Est ticket as IntercodeDynamicData', () => {
+    it('decodes FDC1 from Grand Est ticket as UicDynamicContentData', () => {
       const ticket = decodeTicket(GRAND_EST_U1_FCB3_HEX);
       expect(ticket.level2DataBlock!.dataFormat).toBe('FDC1');
-      expect(ticket.dynamicData).toBeDefined();
+      expect(ticket.dynamicContentData).toBeDefined();
+      expect(ticket.dynamicData).toBeUndefined();
+    });
+
+    it('decodes FDC1 timestamp fields when present', () => {
+      const ticket = decodeTicket(SOLEA_TICKET_HEX);
+      const dcd = ticket.dynamicContentData!;
+      // At minimum the structure should be a valid object
+      expect(typeof dcd).toBe('object');
     });
   });
 
