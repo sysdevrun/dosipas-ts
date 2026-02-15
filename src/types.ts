@@ -322,7 +322,7 @@ export interface UicBarcodeTicketInput {
   endOfValidityDay?: number;
   /** End of validity time in minutes (0-1439). */
   endOfValidityTime?: number;
-  /** Validity duration in minutes (1-3600). */
+  /** Validity duration in seconds (1-3600). */
   validityDuration?: number;
   /** FCB version (1, 2 or 3). Default: 2. */
   fcbVersion?: number;

@@ -185,10 +185,10 @@ function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
     const year = l1.endOfValidityYear;
     const day = l1.endOfValidityDay;
     const timeMinutes = l1.endOfValidityTime ?? 0;
-    const durationMinutes = l1.validityDuration ?? 0;
+    const durationSeconds = l1.validityDuration ?? 0;
 
-    // Compute date from year + day-of-year
-    const expiry = new Date(Date.UTC(year, 0, day, 0, timeMinutes + durationMinutes));
+    // Compute date from year + day-of-year + endOfValidityTime (minutes) + validityDuration (seconds)
+    const expiry = new Date(Date.UTC(year, 0, day, 0, timeMinutes) + durationSeconds * 1000);
     const passed = now < expiry;
     return {
       name: 'Not Expired',
@@ -202,8 +202,8 @@ function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
   const rt = firstRailTicket(ticket);
   const iss = rt?.issuingDetail;
   if (iss && l1.validityDuration != null) {
-    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
-    const expiry = new Date(issuingDate.getTime() + l1.validityDuration * 60 * 1000);
+    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay, 0, iss.issuingTime ?? 0));
+    const expiry = new Date(issuingDate.getTime() + l1.validityDuration * 1000);
     const passed = now < expiry;
     return {
       name: 'Not Expired',
@@ -429,7 +429,7 @@ function checkDynamicContentFreshness(
 
     // Compute generation timestamp from issuingYear + day + time
     const genTime = new Date(Date.UTC(iss.issuingYear, 0, ts.day, 0, 0, ts.time));
-    const expiryTime = new Date(genTime.getTime() + validityDuration * 60 * 1000);
+    const expiryTime = new Date(genTime.getTime() + validityDuration * 1000);
     const passed = now < expiryTime;
 
     return {
@@ -463,12 +463,12 @@ function checkDynamicContentFreshness(
       + (dd.dynamicContentTime ?? 0) * 1000
       + (dd.dynamicContentUTCOffset ?? 0) * 15 * 60 * 1000;
 
-    // Duration: dynamicContentDuration (seconds) or validityDuration (minutes)
+    // Duration: dynamicContentDuration (seconds) or validityDuration (seconds)
     let durationMs: number | undefined;
     if (dd.dynamicContentDuration != null) {
       durationMs = dd.dynamicContentDuration * 1000;
     } else if (l1.validityDuration != null) {
-      durationMs = l1.validityDuration * 60 * 1000;
+      durationMs = l1.validityDuration * 1000;
     }
 
     if (durationMs == null) {
