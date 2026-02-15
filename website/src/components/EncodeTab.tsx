@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { UicBarcodeTicketInput, CurveName } from 'dosipas-ts';
+import type { UicBarcodeTicketInput, UicDynamicContentDataInput, CurveName } from 'dosipas-ts';
 import TicketForm, { ToggleSection, NumberField, OptionalNumberField } from './TicketForm';
 import KeyPairInput from './KeyPairInput';
 import AztecBarcode from './AztecBarcode';
@@ -192,7 +192,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     if (prefillInput) {
       setInput(prefillInput);
       // Enable L2 if prefill has dynamic data
-      if (prefillInput.dynamicData) {
+      if (prefillInput.dynamicData || prefillInput.dynamicContentData) {
         setL2Enabled(true);
       }
       // Populate signatures from prefilled input if present
@@ -292,7 +292,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       setEncodeError(null);
 
       // Start dynamic refresh countdown if enabled
-      if (l2Enabled && dynamicRefreshEnabled && input.dynamicData && l1PrivKey && l2PrivKey) {
+      if (l2Enabled && dynamicRefreshEnabled && (input.dynamicData || input.dynamicContentData) && l1PrivKey && l2PrivKey) {
         regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
         setCountdown(dynamicRefreshInterval);
       } else {
@@ -328,14 +328,28 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
             const secondsSinceMidnight =
               now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-            const updatedInput: UicBarcodeTicketInput = {
-              ...params.input,
-              dynamicData: {
-                ...params.input.dynamicData!,
-                dynamicContentDay: dayOfYear,
-                dynamicContentTime: secondsSinceMidnight,
-              },
-            };
+            let updatedInput: UicBarcodeTicketInput;
+            if (params.input.dynamicContentData) {
+              updatedInput = {
+                ...params.input,
+                dynamicContentData: {
+                  ...params.input.dynamicContentData,
+                  dynamicContentTimeStamp: {
+                    day: dayOfYear,
+                    time: secondsSinceMidnight,
+                  },
+                },
+              };
+            } else {
+              updatedInput = {
+                ...params.input,
+                dynamicData: {
+                  ...params.input.dynamicData!,
+                  dynamicContentDay: dayOfYear,
+                  dynamicContentTime: secondsSinceMidnight,
+                },
+              };
+            }
             regenRef.current = { ...params, input: updatedInput };
             setInput(updatedInput);
 
@@ -397,11 +411,11 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
 
   // Stop regeneration when L2 is disabled or dynamic refresh is turned off
   useEffect(() => {
-    if (!l2Enabled || !dynamicRefreshEnabled || !input.dynamicData) {
+    if (!l2Enabled || !dynamicRefreshEnabled || (!input.dynamicData && !input.dynamicContentData)) {
       regenRef.current = null;
       setCountdown(null);
     }
-  }, [l2Enabled, dynamicRefreshEnabled, input.dynamicData]);
+  }, [l2Enabled, dynamicRefreshEnabled, input.dynamicData, input.dynamicContentData]);
 
   // -------------------------------------------------------------------------
   // Dynamic data update helper
@@ -431,7 +445,8 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     navigator.clipboard.writeText(jsonPreview);
   };
 
-  const hasDynamic = !!input.dynamicData;
+  const hasDynamic = !!input.dynamicData || !!input.dynamicContentData;
+  const dynamicFormat: 'intercode' | 'fdc1' = input.dynamicContentData ? 'fdc1' : 'intercode';
   const l2KeyPresent = l2Enabled && !!l2PrivKey;
 
   return (
@@ -511,43 +526,127 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
 
             {/* Level 2 Dynamic Data */}
             <ToggleSection
-              title="Intercode 6 Dynamic Data"
+              title="Level 2 Dynamic Data"
               enabled={hasDynamic}
               onToggle={(v) => {
-                handleInputChange({
-                  ...input,
-                  dynamicData: v
-                    ? { rics: input.securityProviderNum ?? 0, dynamicContentDay: 0 }
-                    : undefined,
-                });
+                if (v) {
+                  handleInputChange({
+                    ...input,
+                    dynamicContentData: {},
+                    dynamicData: undefined,
+                  });
+                } else {
+                  handleInputChange({
+                    ...input,
+                    dynamicData: undefined,
+                    dynamicContentData: undefined,
+                  });
+                }
               }}
             >
-              <NumberField
-                label="RICS"
-                value={input.dynamicData?.rics}
-                onChange={(v) => updateDynamicData({ rics: v ?? 0 })}
-                placeholder="e.g. 3703"
-              />
-              <NumberField
-                label="Day"
-                value={input.dynamicData?.dynamicContentDay}
-                onChange={(v) => updateDynamicData({ dynamicContentDay: v })}
-              />
-              <OptionalNumberField
-                label="Time"
-                value={input.dynamicData?.dynamicContentTime}
-                onChange={(v) => updateDynamicData({ dynamicContentTime: v })}
-              />
-              <OptionalNumberField
-                label="UTC Offset"
-                value={input.dynamicData?.dynamicContentUTCOffset}
-                onChange={(v) => updateDynamicData({ dynamicContentUTCOffset: v })}
-              />
-              <OptionalNumberField
-                label="Duration"
-                value={input.dynamicData?.dynamicContentDuration}
-                onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
-              />
+              {/* Format selector */}
+              <div className="col-span-2 flex items-center gap-3 mb-1">
+                <span className="text-xs text-gray-500">Format</span>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="dynamicFormat"
+                    checked={dynamicFormat === 'fdc1'}
+                    onChange={() => {
+                      handleInputChange({
+                        ...input,
+                        dynamicContentData: {},
+                        dynamicData: undefined,
+                      });
+                    }}
+                    className="text-blue-600"
+                  />
+                  <span className="text-xs text-gray-700">FDC1</span>
+                </label>
+                <label className="flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="dynamicFormat"
+                    checked={dynamicFormat === 'intercode'}
+                    onChange={() => {
+                      handleInputChange({
+                        ...input,
+                        dynamicData: { rics: input.securityProviderNum ?? 0, dynamicContentDay: 0 },
+                        dynamicContentData: undefined,
+                      });
+                    }}
+                    className="text-blue-600"
+                  />
+                  <span className="text-xs text-gray-700">Intercode 6 (_RICS.ID1)</span>
+                </label>
+              </div>
+
+              {dynamicFormat === 'fdc1' && (
+                <>
+                  <NumberField
+                    label="Timestamp Day"
+                    value={input.dynamicContentData?.dynamicContentTimeStamp?.day}
+                    onChange={(v) => {
+                      const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+                      handleInputChange({
+                        ...input,
+                        dynamicContentData: {
+                          ...input.dynamicContentData,
+                          dynamicContentTimeStamp: v != null ? { day: v, time: ts?.time ?? 0 } : undefined,
+                        },
+                      });
+                    }}
+                    placeholder="Day of year (1-366)"
+                  />
+                  <NumberField
+                    label="Timestamp Time"
+                    value={input.dynamicContentData?.dynamicContentTimeStamp?.time}
+                    onChange={(v) => {
+                      const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+                      handleInputChange({
+                        ...input,
+                        dynamicContentData: {
+                          ...input.dynamicContentData,
+                          dynamicContentTimeStamp: v != null ? { day: ts?.day ?? 1, time: v } : undefined,
+                        },
+                      });
+                    }}
+                    placeholder="Seconds since midnight (0-86399)"
+                  />
+                </>
+              )}
+
+              {dynamicFormat === 'intercode' && (
+                <>
+                  <NumberField
+                    label="RICS"
+                    value={input.dynamicData?.rics}
+                    onChange={(v) => updateDynamicData({ rics: v ?? 0 })}
+                    placeholder="e.g. 3703"
+                  />
+                  <NumberField
+                    label="Day"
+                    value={input.dynamicData?.dynamicContentDay}
+                    onChange={(v) => updateDynamicData({ dynamicContentDay: v })}
+                  />
+                  <OptionalNumberField
+                    label="Time"
+                    value={input.dynamicData?.dynamicContentTime}
+                    onChange={(v) => updateDynamicData({ dynamicContentTime: v })}
+                  />
+                  <OptionalNumberField
+                    label="UTC Offset"
+                    value={input.dynamicData?.dynamicContentUTCOffset}
+                    onChange={(v) => updateDynamicData({ dynamicContentUTCOffset: v })}
+                  />
+                  <OptionalNumberField
+                    label="Duration"
+                    value={input.dynamicData?.dynamicContentDuration}
+                    onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
+                  />
+                </>
+              )}
+
               {l2KeyPresent && (
                 <div className="col-span-2 space-y-2 border-t border-gray-100 pt-2 mt-1">
                   <label className="flex items-center gap-2">
@@ -558,7 +657,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
                       className="rounded border-gray-300"
                     />
                     <span className="text-xs text-gray-600">
-                      Refresh dynamicContentDate and dynamicContentTime
+                      Refresh timestamp automatically
                     </span>
                   </label>
                   {dynamicRefreshEnabled && (

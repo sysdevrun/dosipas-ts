@@ -4,6 +4,7 @@ import type {
   IssuingDetailInput,
   IntercodeIssuingDataInput,
   IntercodeDynamicDataInput,
+  UicDynamicContentDataInput,
   TravelerDetailInput,
   TransportDocumentInput,
 } from 'dosipas-ts';
@@ -74,9 +75,12 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
     ? (JSON.parse(JSON.stringify(rt.controlDetail)) as Record<string, unknown>)
     : undefined;
 
-  // Convert dynamic data
+  // Convert dynamic data (FDC1 or Intercode)
   let dynamicData: IntercodeDynamicDataInput | undefined;
-  if (ticket.dynamicData) {
+  let dynamicContentData: UicDynamicContentDataInput | undefined;
+  if (ticket.dynamicContentData) {
+    dynamicContentData = { ...ticket.dynamicContentData };
+  } else if (ticket.dynamicData) {
     dynamicData = {
       rics: ticket.security.securityProviderNum ?? 0,
       dynamicContentDay: ticket.dynamicData.dynamicContentDay,
@@ -109,6 +113,7 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
       controlDetail,
     },
     dynamicData,
+    dynamicContentData,
   };
 
   return result;
