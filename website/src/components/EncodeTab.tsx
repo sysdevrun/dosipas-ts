@@ -1,9 +1,19 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { UicBarcodeTicketInput } from 'dosipas-ts';
-import TicketForm from './TicketForm';
+import type { UicBarcodeTicketInput, CurveName } from 'dosipas-ts';
+import TicketForm, { ToggleSection, NumberField, OptionalNumberField } from './TicketForm';
 import KeyPairInput from './KeyPairInput';
 import AztecBarcode from './AztecBarcode';
-import { useTicketEncode } from '../hooks/useTicketEncode';
+import {
+  signLevel1Data,
+  signLevel2Data,
+  encodeTicket,
+  signTicket,
+  bytesToHex,
+  hexToBytes,
+  getPublicKey,
+  CURVES,
+  type KeyPair,
+} from '../lib/signing';
 
 /** NIST FIPS 186-4 ECDSA P-256 KeyPair test vector private keys (from CAVP KeyPair.rsp). */
 const FIPS_TEST_KEY_1 = 'c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357';
@@ -53,24 +63,99 @@ function jsonReplacer(_key: string, value: unknown): unknown {
   return value;
 }
 
+// ---------------------------------------------------------------------------
+// Signature section component
+// ---------------------------------------------------------------------------
+
+function SignatureSection({
+  label,
+  sigHex,
+  onSigHexChange,
+  stale,
+  canGenerate,
+  onGenerate,
+  sigError,
+}: {
+  label: string;
+  sigHex: string;
+  onSigHexChange: (hex: string) => void;
+  stale: boolean;
+  canGenerate: boolean;
+  onGenerate: () => void;
+  sigError: string | null;
+}) {
+  return (
+    <div className="space-y-2 border-t border-gray-100 pt-3 mt-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          {label}
+        </h4>
+        {canGenerate && (
+          <button
+            onClick={onGenerate}
+            className="text-xs px-3 py-1 bg-green-100 text-green-700 rounded hover:bg-green-200 transition-colors"
+          >
+            {sigHex ? 'Regenerate' : 'Generate'}
+          </button>
+        )}
+      </div>
+      {stale && sigHex && (
+        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
+          <span>Data has changed since this signature was generated. The signature is likely outdated.</span>
+        </div>
+      )}
+      <textarea
+        value={sigHex}
+        onChange={(e) => onSigHexChange(e.target.value.replace(/[^0-9a-fA-F]/g, ''))}
+        placeholder="Signature hex (generate or paste)..."
+        className="w-full px-3 py-1.5 font-mono text-xs bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent h-16 resize-y"
+        spellCheck={false}
+      />
+      {sigError && (
+        <p className="text-xs text-red-600">{sigError}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main EncodeTab component
+// ---------------------------------------------------------------------------
+
 export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }: Props) {
   const [input, setInput] = useState<UicBarcodeTicketInput>(getDefaultInput);
 
+  // Level 1 key state
   const [l1Curve, setL1Curve] = useState('P-256');
   const [l1PrivKey, setL1PrivKey] = useState('');
   const [l1PubKey, setL1PubKey] = useState('');
 
+  // Level 1 signature state
+  const [l1SigHex, setL1SigHex] = useState('');
+  const [l1SigStale, setL1SigStale] = useState(false);
+  const [l1SigError, setL1SigError] = useState<string | null>(null);
+
+  // Level 2 key state
   const [l2Enabled, setL2Enabled] = useState(false);
   const [l2Curve, setL2Curve] = useState('P-256');
   const [l2PrivKey, setL2PrivKey] = useState('');
   const [l2PubKey, setL2PubKey] = useState('');
 
+  // Level 2 signature state
+  const [l2SigHex, setL2SigHex] = useState('');
+  const [l2SigStale, setL2SigStale] = useState(false);
+  const [l2SigError, setL2SigError] = useState<string | null>(null);
+
+  // UI state
   const [jsonOpen, setJsonOpen] = useState(false);
   const [dynamicRefreshEnabled, setDynamicRefreshEnabled] = useState(false);
   const [dynamicRefreshInterval, setDynamicRefreshInterval] = useState(10);
   const [countdown, setCountdown] = useState<number | null>(null);
 
-  const { hex, bytes, error, loading, encode } = useTicketEncode();
+  // Encoding output state
+  const [hex, setHex] = useState('');
+  const [bytes, setBytes] = useState<Uint8Array>(new Uint8Array());
+  const [encodeError, setEncodeError] = useState<string | null>(null);
 
   // Keep mutable refs for the regeneration interval
   const regenRef = useRef<{
@@ -81,33 +166,142 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     l2Curve: string;
   } | null>(null);
 
+  // -------------------------------------------------------------------------
+  // Input change handler - marks signatures as stale
+  // -------------------------------------------------------------------------
+
+  const handleInputChange = useCallback((newInput: UicBarcodeTicketInput) => {
+    setInput(newInput);
+    // Mark signatures stale when data changes
+    if (l1SigHex) setL1SigStale(true);
+    if (l2SigHex) setL2SigStale(true);
+  }, [l1SigHex, l2SigHex]);
+
+  // Also mark sigs stale when key/curve changes (affects OIDs in signed data)
+  useEffect(() => {
+    if (l1SigHex) setL1SigStale(true);
+    if (l2SigHex) setL2SigStale(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [l1Curve, l2Curve, l2Enabled]);
+
+  // -------------------------------------------------------------------------
   // Apply prefill from decoded ticket
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
     if (prefillInput) {
       setInput(prefillInput);
+      // Enable L2 if prefill has dynamic data
+      if (prefillInput.dynamicData) {
+        setL2Enabled(true);
+      }
+      // Clear signatures since prefilled data likely doesn't include them
+      setL1SigHex('');
+      setL1SigStale(false);
+      setL2SigHex('');
+      setL2SigStale(false);
       onPrefillConsumed();
     }
   }, [prefillInput, onPrefillConsumed]);
 
-  const handleEncode = useCallback(() => {
-    if (!l1PrivKey) {
-      return;
-    }
-    if (l2Enabled && !l2PrivKey) {
-      return;
-    }
-    encode(input, l1PrivKey, l1Curve, l2Enabled ? l2PrivKey : '', l2Curve);
-    // Start dynamic refresh countdown if enabled
-    if (l2Enabled && dynamicRefreshEnabled && input.dynamicData) {
-      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
-      setCountdown(dynamicRefreshInterval);
-    } else {
-      regenRef.current = null;
-      setCountdown(null);
-    }
-  }, [input, l1PrivKey, l1Curve, l2Enabled, l2PrivKey, l2Curve, encode, dynamicRefreshEnabled, dynamicRefreshInterval]);
+  // -------------------------------------------------------------------------
+  // Build a prepared input with OIDs and L2 public key set
+  // -------------------------------------------------------------------------
 
-  // Dynamic content refresh: re-encode periodically with updated day/time
+  const buildPreparedInput = useCallback((): UicBarcodeTicketInput => {
+    const l1CurveConfig = CURVES[l1Curve as CurveName];
+    const prepared: UicBarcodeTicketInput = {
+      ...input,
+      level1KeyAlg: l1CurveConfig.keyAlgOid,
+      level1SigningAlg: l1CurveConfig.sigAlgOid,
+    };
+
+    if (l2Enabled && l2PubKey) {
+      const l2CurveConfig = CURVES[l2Curve as CurveName];
+      prepared.level2KeyAlg = l2CurveConfig.keyAlgOid;
+      prepared.level2SigningAlg = l2CurveConfig.sigAlgOid;
+      prepared.level2PublicKey = hexToBytes(l2PubKey);
+    }
+
+    return prepared;
+  }, [input, l1Curve, l2Enabled, l2Curve, l2PubKey]);
+
+  // -------------------------------------------------------------------------
+  // Generate Level 1 signature
+  // -------------------------------------------------------------------------
+
+  const handleGenerateL1Sig = useCallback(() => {
+    try {
+      const prepared = buildPreparedInput();
+      const sig = signLevel1Data(prepared, l1PrivKey, l1Curve);
+      const sigHex = bytesToHex(sig);
+      setL1SigHex(sigHex);
+      setL1SigStale(false);
+      setL1SigError(null);
+      // L2 depends on L1 signature, so mark L2 stale
+      if (l2SigHex) setL2SigStale(true);
+    } catch (e) {
+      setL1SigError(e instanceof Error ? e.message : 'Failed to generate L1 signature');
+    }
+  }, [buildPreparedInput, l1PrivKey, l1Curve, l2SigHex]);
+
+  // -------------------------------------------------------------------------
+  // Generate Level 2 signature
+  // -------------------------------------------------------------------------
+
+  const handleGenerateL2Sig = useCallback(() => {
+    if (!l1SigHex) {
+      setL2SigError('Level 1 signature must be generated first');
+      return;
+    }
+    try {
+      const prepared = buildPreparedInput();
+      prepared.level1Signature = hexToBytes(l1SigHex);
+      const sig = signLevel2Data(prepared, l2PrivKey, l2Curve);
+      const sigHex = bytesToHex(sig);
+      setL2SigHex(sigHex);
+      setL2SigStale(false);
+      setL2SigError(null);
+    } catch (e) {
+      setL2SigError(e instanceof Error ? e.message : 'Failed to generate L2 signature');
+    }
+  }, [buildPreparedInput, l1SigHex, l2PrivKey, l2Curve]);
+
+  // -------------------------------------------------------------------------
+  // Encode ticket with existing signatures
+  // -------------------------------------------------------------------------
+
+  const handleEncode = useCallback(() => {
+    try {
+      const prepared = buildPreparedInput();
+      prepared.level1Signature = l1SigHex ? hexToBytes(l1SigHex) : new Uint8Array(0);
+      prepared.level2Signature = l2SigHex ? hexToBytes(l2SigHex) : new Uint8Array(0);
+
+      const encodedBytes = encodeTicket(prepared);
+      const encodedHex = bytesToHex(encodedBytes);
+      setHex(encodedHex);
+      setBytes(encodedBytes);
+      setEncodeError(null);
+
+      // Start dynamic refresh countdown if enabled
+      if (l2Enabled && dynamicRefreshEnabled && input.dynamicData && l1PrivKey && l2PrivKey) {
+        regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
+        setCountdown(dynamicRefreshInterval);
+      } else {
+        regenRef.current = null;
+        setCountdown(null);
+      }
+    } catch (e) {
+      setHex('');
+      setBytes(new Uint8Array());
+      setEncodeError(e instanceof Error ? e.message : 'Encode failed');
+    }
+  }, [buildPreparedInput, l1SigHex, l2SigHex, l2Enabled, dynamicRefreshEnabled, input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, dynamicRefreshInterval]);
+
+  // -------------------------------------------------------------------------
+  // Dynamic content refresh (re-signs and re-encodes periodically)
+  // -------------------------------------------------------------------------
+
   useEffect(() => {
     if (countdown === null) return;
 
@@ -115,7 +309,6 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       setCountdown((prev) => {
         if (prev === null) return null;
         if (prev <= 1) {
-          // Time to regenerate with fresh dynamicContentDay/Time
           const params = regenRef.current;
           if (params) {
             const now = new Date();
@@ -123,7 +316,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
             const dayOfYear =
               Math.floor(
                 (now.getTime() - startOfYear.getTime()) / 86400000,
-              ) - 1; // Jan 1 = 0
+              ) - 1;
             const secondsSinceMidnight =
               now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
@@ -135,16 +328,48 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
                 dynamicContentTime: secondsSinceMidnight,
               },
             };
-            // Update both the ref and the form state
             regenRef.current = { ...params, input: updatedInput };
             setInput(updatedInput);
-            encode(
-              updatedInput,
-              params.l1PrivKey,
-              params.l1Curve,
-              params.l2PrivKey,
-              params.l2Curve,
-            );
+
+            // Full sign+encode for dynamic refresh
+            try {
+              const level1Key: KeyPair = {
+                privateKey: hexToBytes(params.l1PrivKey),
+                publicKey: getPublicKey(params.l1PrivKey, params.l1Curve),
+                curve: params.l1Curve as CurveName,
+              };
+              const level2Key: KeyPair = {
+                privateKey: hexToBytes(params.l2PrivKey),
+                publicKey: getPublicKey(params.l2PrivKey, params.l2Curve),
+                curve: params.l2Curve as CurveName,
+              };
+              const refreshedBytes = signTicket(updatedInput, level1Key, level2Key);
+              const refreshedHex = bytesToHex(refreshedBytes);
+              setHex(refreshedHex);
+              setBytes(refreshedBytes);
+              // Update signature fields to match
+              // Extract the sigs from the signed output by re-signing
+              const l1CurveConfig = CURVES[params.l1Curve as CurveName];
+              const l2CurveConfig = CURVES[params.l2Curve as CurveName];
+              const prepInput: UicBarcodeTicketInput = {
+                ...updatedInput,
+                level1KeyAlg: l1CurveConfig.keyAlgOid,
+                level1SigningAlg: l1CurveConfig.sigAlgOid,
+                level2KeyAlg: l2CurveConfig.keyAlgOid,
+                level2SigningAlg: l2CurveConfig.sigAlgOid,
+                level2PublicKey: level2Key.publicKey,
+              };
+              const l1Sig = signLevel1Data(prepInput, params.l1PrivKey, params.l1Curve);
+              setL1SigHex(bytesToHex(l1Sig));
+              setL1SigStale(false);
+              prepInput.level1Signature = l1Sig;
+              const l2Sig = signLevel2Data(prepInput, params.l2PrivKey, params.l2Curve);
+              setL2SigHex(bytesToHex(l2Sig));
+              setL2SigStale(false);
+              setEncodeError(null);
+            } catch (e) {
+              setEncodeError(e instanceof Error ? e.message : 'Dynamic refresh failed');
+            }
           }
           return dynamicRefreshInterval;
         }
@@ -153,7 +378,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [countdown === null, encode, dynamicRefreshInterval]);
+  }, [countdown === null, dynamicRefreshInterval]);
 
   // Update regeneration params when input or keys change (while regeneration is active)
   useEffect(() => {
@@ -170,23 +395,48 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     }
   }, [l2Enabled, dynamicRefreshEnabled, input.dynamicData]);
 
+  // -------------------------------------------------------------------------
+  // Dynamic data update helper
+  // -------------------------------------------------------------------------
+
+  const updateDynamicData = useCallback((partial: Partial<UicBarcodeTicketInput['dynamicData'] & object>) => {
+    handleInputChange({
+      ...input,
+      dynamicData: { ...input.dynamicData!, ...partial },
+    });
+  }, [input, handleInputChange]);
+
+  // -------------------------------------------------------------------------
+  // Misc helpers
+  // -------------------------------------------------------------------------
+
   const copyHex = () => {
     navigator.clipboard.writeText(hex);
   };
 
-  const jsonPreview = useMemo(() => JSON.stringify(input, jsonReplacer, 2), [input]);
+  const jsonPreview = useMemo(() => jsonReplacer
+    ? JSON.stringify(input, jsonReplacer, 2)
+    : JSON.stringify(input, null, 2),
+  [input]);
 
   const copyJson = () => {
     navigator.clipboard.writeText(jsonPreview);
   };
 
+  const hasDynamic = !!input.dynamicData;
+  const l2KeyPresent = l2Enabled && !!l2PrivKey;
+
   return (
     <div className="space-y-6">
-      {/* Signing Keys at top */}
-      <div className="space-y-4 bg-white rounded-lg border border-gray-200 p-4">
-        <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          Signing Keys
+      {/* ================================================================= */}
+      {/* LEVEL 1 SECTION                                                   */}
+      {/* ================================================================= */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Level 1
         </h3>
+
+        {/* Level 1 Key */}
         <KeyPairInput
           label="Level 1 Key"
           curve={l1Curve}
@@ -198,19 +448,48 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
           fipsTestKey={FIPS_TEST_KEY_1}
         />
 
-        <div className="border-t border-gray-100 pt-3">
-          <label className="flex items-center gap-2 mb-2">
-            <input
-              type="checkbox"
-              checked={l2Enabled}
-              onChange={(e) => setL2Enabled(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              Enable Level 2 (dynamic barcode)
-            </span>
-          </label>
-          {l2Enabled && (
+        {/* Level 1 Data */}
+        <TicketForm
+          value={input}
+          onChange={handleInputChange}
+        />
+
+        {/* Level 1 Signature */}
+        <SignatureSection
+          label="Level 1 Signature"
+          sigHex={l1SigHex}
+          onSigHexChange={(hex) => {
+            setL1SigHex(hex);
+            setL1SigStale(false);
+            // L2 depends on L1 sig
+            if (l2SigHex) setL2SigStale(true);
+          }}
+          stale={l1SigStale}
+          canGenerate={!!l1PrivKey}
+          onGenerate={handleGenerateL1Sig}
+          sigError={l1SigError}
+        />
+      </div>
+
+      {/* ================================================================= */}
+      {/* LEVEL 2 SECTION                                                   */}
+      {/* ================================================================= */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={l2Enabled}
+            onChange={(e) => setL2Enabled(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+            Level 2 (dynamic barcode)
+          </h3>
+        </label>
+
+        {l2Enabled && (
+          <>
+            {/* Level 2 Key */}
             <KeyPairInput
               label="Level 2 Key"
               curve={l2Curve}
@@ -221,36 +500,112 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
               onPublicKeyChange={setL2PubKey}
               fipsTestKey={FIPS_TEST_KEY_2}
             />
-          )}
-        </div>
+
+            {/* Level 2 Dynamic Data */}
+            <ToggleSection
+              title="Intercode 6 Dynamic Data"
+              enabled={hasDynamic}
+              onToggle={(v) => {
+                handleInputChange({
+                  ...input,
+                  dynamicData: v
+                    ? { rics: input.securityProviderNum ?? 0, dynamicContentDay: 0 }
+                    : undefined,
+                });
+              }}
+            >
+              <NumberField
+                label="RICS"
+                value={input.dynamicData?.rics}
+                onChange={(v) => updateDynamicData({ rics: v ?? 0 })}
+                placeholder="e.g. 3703"
+              />
+              <NumberField
+                label="Day"
+                value={input.dynamicData?.dynamicContentDay}
+                onChange={(v) => updateDynamicData({ dynamicContentDay: v })}
+              />
+              <OptionalNumberField
+                label="Time"
+                value={input.dynamicData?.dynamicContentTime}
+                onChange={(v) => updateDynamicData({ dynamicContentTime: v })}
+              />
+              <OptionalNumberField
+                label="UTC Offset"
+                value={input.dynamicData?.dynamicContentUTCOffset}
+                onChange={(v) => updateDynamicData({ dynamicContentUTCOffset: v })}
+              />
+              <OptionalNumberField
+                label="Duration"
+                value={input.dynamicData?.dynamicContentDuration}
+                onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
+              />
+              {l2KeyPresent && (
+                <div className="col-span-2 space-y-2 border-t border-gray-100 pt-2 mt-1">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={dynamicRefreshEnabled}
+                      onChange={(e) => setDynamicRefreshEnabled(e.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    <span className="text-xs text-gray-600">
+                      Refresh dynamicContentDate and dynamicContentTime
+                    </span>
+                  </label>
+                  {dynamicRefreshEnabled && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-500">Interval</label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={dynamicRefreshInterval}
+                        onChange={(e) =>
+                          setDynamicRefreshInterval(Math.max(1, Number(e.target.value)))
+                        }
+                        className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                      />
+                      <span className="text-xs text-gray-500">seconds</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </ToggleSection>
+
+            {/* Level 2 Signature */}
+            <SignatureSection
+              label="Level 2 Signature"
+              sigHex={l2SigHex}
+              onSigHexChange={(hex) => {
+                setL2SigHex(hex);
+                setL2SigStale(false);
+              }}
+              stale={l2SigStale}
+              canGenerate={!!l2PrivKey && !!l1SigHex}
+              onGenerate={handleGenerateL2Sig}
+              sigError={l2SigError}
+            />
+          </>
+        )}
       </div>
 
-      {/* Ticket Form */}
-      <TicketForm
-        value={input}
-        onChange={setInput}
-        l2KeyPresent={l2Enabled && !!l2PrivKey}
-        dynamicRefreshEnabled={dynamicRefreshEnabled}
-        onDynamicRefreshChange={setDynamicRefreshEnabled}
-        dynamicRefreshInterval={dynamicRefreshInterval}
-        onDynamicRefreshIntervalChange={setDynamicRefreshInterval}
-      />
-
-      {/* Encode button */}
+      {/* ================================================================= */}
+      {/* ENCODE BUTTON                                                     */}
+      {/* ================================================================= */}
       <div className="flex gap-3">
         <button
           onClick={handleEncode}
-          disabled={loading || !l1PrivKey || (l2Enabled && !l2PrivKey)}
+          disabled={!l1SigHex && !l1PrivKey}
           className="px-6 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
         >
-          {loading ? 'Encoding...' : 'Encode & Sign'}
+          Encode
         </button>
       </div>
 
       {/* Error display */}
-      {error && (
+      {encodeError && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          {error}
+          {encodeError}
         </div>
       )}
 
