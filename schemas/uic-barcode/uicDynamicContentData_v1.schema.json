@@ -1,0 +1,314 @@
+{
+  "UicDynamicContentData": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "dynamicContentMobileAppId",
+        "schema": {
+          "type": "IA5String"
+        },
+        "optional": true
+      },
+      {
+        "name": "dynamicContentTimeStamp",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "day",
+              "schema": {
+                "type": "INTEGER",
+                "min": 1,
+                "max": 366
+              }
+            },
+            {
+              "name": "time",
+              "schema": {
+                "type": "INTEGER",
+                "min": 0,
+                "max": 86399
+              }
+            }
+          ]
+        },
+        "optional": true
+      },
+      {
+        "name": "dynamicContentGeoCoordinate",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "geoUnit",
+              "schema": {
+                "type": "ENUMERATED",
+                "values": [
+                  "microDegree",
+                  "tenthmilliDegree",
+                  "milliDegree",
+                  "centiDegree",
+                  "deciDegree"
+                ]
+              },
+              "defaultValue": "milliDegree"
+            },
+            {
+              "name": "coordinateSystem",
+              "schema": {
+                "type": "ENUMERATED",
+                "values": [
+                  "wgs84",
+                  "grs80"
+                ]
+              },
+              "defaultValue": "wgs84"
+            },
+            {
+              "name": "hemisphereLongitude",
+              "schema": {
+                "type": "ENUMERATED",
+                "values": [
+                  "east",
+                  "west"
+                ]
+              },
+              "defaultValue": "east"
+            },
+            {
+              "name": "hemisphereLatitude",
+              "schema": {
+                "type": "ENUMERATED",
+                "values": [
+                  "north",
+                  "south"
+                ]
+              },
+              "defaultValue": "north"
+            },
+            {
+              "name": "longitude",
+              "schema": {
+                "type": "INTEGER"
+              }
+            },
+            {
+              "name": "latitude",
+              "schema": {
+                "type": "INTEGER"
+              }
+            },
+            {
+              "name": "accuracy",
+              "schema": {
+                "type": "ENUMERATED",
+                "values": [
+                  "microDegree",
+                  "tenthmilliDegree",
+                  "milliDegree",
+                  "centiDegree",
+                  "deciDegree"
+                ]
+              },
+              "optional": true
+            }
+          ]
+        },
+        "optional": true
+      },
+      {
+        "name": "dynamicContentResponseToChallenge",
+        "schema": {
+          "type": "SEQUENCE OF",
+          "item": {
+            "type": "SEQUENCE",
+            "fields": [
+              {
+                "name": "extensionId",
+                "schema": {
+                  "type": "IA5String"
+                }
+              },
+              {
+                "name": "extensionData",
+                "schema": {
+                  "type": "OCTET STRING"
+                }
+              }
+            ]
+          }
+        },
+        "optional": true
+      },
+      {
+        "name": "dynamicContentExtension",
+        "schema": {
+          "type": "SEQUENCE",
+          "fields": [
+            {
+              "name": "extensionId",
+              "schema": {
+                "type": "IA5String"
+              }
+            },
+            {
+              "name": "extensionData",
+              "schema": {
+                "type": "OCTET STRING"
+              }
+            }
+          ]
+        },
+        "optional": true
+      }
+    ],
+    "extensionFields": []
+  },
+  "TimeStampData": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "day",
+        "schema": {
+          "type": "INTEGER",
+          "min": 1,
+          "max": 366
+        }
+      },
+      {
+        "name": "time",
+        "schema": {
+          "type": "INTEGER",
+          "min": 0,
+          "max": 86399
+        }
+      }
+    ]
+  },
+  "GeoCoordinateType": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "geoUnit",
+        "schema": {
+          "type": "ENUMERATED",
+          "values": [
+            "microDegree",
+            "tenthmilliDegree",
+            "milliDegree",
+            "centiDegree",
+            "deciDegree"
+          ]
+        },
+        "defaultValue": "milliDegree"
+      },
+      {
+        "name": "coordinateSystem",
+        "schema": {
+          "type": "ENUMERATED",
+          "values": [
+            "wgs84",
+            "grs80"
+          ]
+        },
+        "defaultValue": "wgs84"
+      },
+      {
+        "name": "hemisphereLongitude",
+        "schema": {
+          "type": "ENUMERATED",
+          "values": [
+            "east",
+            "west"
+          ]
+        },
+        "defaultValue": "east"
+      },
+      {
+        "name": "hemisphereLatitude",
+        "schema": {
+          "type": "ENUMERATED",
+          "values": [
+            "north",
+            "south"
+          ]
+        },
+        "defaultValue": "north"
+      },
+      {
+        "name": "longitude",
+        "schema": {
+          "type": "INTEGER"
+        }
+      },
+      {
+        "name": "latitude",
+        "schema": {
+          "type": "INTEGER"
+        }
+      },
+      {
+        "name": "accuracy",
+        "schema": {
+          "type": "ENUMERATED",
+          "values": [
+            "microDegree",
+            "tenthmilliDegree",
+            "milliDegree",
+            "centiDegree",
+            "deciDegree"
+          ]
+        },
+        "optional": true
+      }
+    ]
+  },
+  "GeoCoordinateSystemType": {
+    "type": "ENUMERATED",
+    "values": [
+      "wgs84",
+      "grs80"
+    ]
+  },
+  "GeoUnitType": {
+    "type": "ENUMERATED",
+    "values": [
+      "microDegree",
+      "tenthmilliDegree",
+      "milliDegree",
+      "centiDegree",
+      "deciDegree"
+    ]
+  },
+  "HemisphereLongitudeType": {
+    "type": "ENUMERATED",
+    "values": [
+      "east",
+      "west"
+    ]
+  },
+  "HemisphereLatitudeType": {
+    "type": "ENUMERATED",
+    "values": [
+      "north",
+      "south"
+    ]
+  },
+  "ExtensionData": {
+    "type": "SEQUENCE",
+    "fields": [
+      {
+        "name": "extensionId",
+        "schema": {
+          "type": "IA5String"
+        }
+      },
+      {
+        "name": "extensionData",
+        "schema": {
+          "type": "OCTET STRING"
+        }
+      }
+    ]
+  }
+}
