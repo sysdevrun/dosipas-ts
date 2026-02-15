@@ -1,8 +1,8 @@
 /**
  * Signature format utilities for UIC barcode verification.
  *
- * Handles DER-to-raw conversion for ECDSA/DSA signatures and
- * public key format detection/extraction.
+ * Handles DER-to-raw and raw-to-DER conversion for ECDSA/DSA signatures
+ * and public key format detection/extraction.
  */
 
 /**
@@ -62,6 +62,56 @@ export function derToRaw(der: Uint8Array, componentLength: number): Uint8Array {
   raw.set(der.slice(sStart + sPad, sStart + sLen), sDst);
 
   return raw;
+}
+
+/**
+ * Convert a raw (r || s) ECDSA signature to DER format.
+ *
+ * This is the inverse of {@link derToRaw}.
+ *
+ * @param raw - Raw (r || s) signature bytes (2 * componentLength)
+ * @param componentLength - Byte length of each component (32 for P-256, 48 for P-384, etc.)
+ * @returns DER-encoded signature bytes
+ */
+export function rawToDer(raw: Uint8Array, componentLength: number): Uint8Array {
+  const r = raw.slice(0, componentLength);
+  const s = raw.slice(componentLength, componentLength * 2);
+
+  const rInt = integerToDer(r);
+  const sInt = integerToDer(s);
+
+  const seqLen = rInt.length + sInt.length;
+  const seqHeader = seqLen < 128
+    ? new Uint8Array([0x30, seqLen])
+    : new Uint8Array([0x30, 0x81, seqLen]);
+
+  const der = new Uint8Array(seqHeader.length + seqLen);
+  der.set(seqHeader, 0);
+  der.set(rInt, seqHeader.length);
+  der.set(sInt, seqHeader.length + rInt.length);
+  return der;
+}
+
+/** Encode an unsigned big-endian integer as a DER INTEGER (tag 0x02 + length + value). */
+function integerToDer(value: Uint8Array): Uint8Array {
+  // Strip leading zeros
+  let start = 0;
+  while (start < value.length - 1 && value[start] === 0) start++;
+
+  // Add 0x00 prefix if high bit is set (to keep positive)
+  const needsPad = value[start] & 0x80;
+  const len = value.length - start + (needsPad ? 1 : 0);
+
+  const result = new Uint8Array(2 + len);
+  result[0] = 0x02; // INTEGER tag
+  result[1] = len;
+  if (needsPad) {
+    result[2] = 0x00;
+    result.set(value.slice(start), 3);
+  } else {
+    result.set(value.slice(start), 2);
+  }
+  return result;
 }
 
 /** SPKI header for EC P-256 (26 bytes: SEQUENCE > SEQUENCE > OID ecPublicKey > OID P-256 > BIT STRING). */

@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { UicBarcodeTicketInput } from 'dosipas-ts';
+import type { UicBarcodeTicketInput, CurveName } from 'dosipas-ts';
 import {
   signTicket,
   bytesToHex,
@@ -37,7 +37,7 @@ export function useTicketEncode() {
         const level1Key: KeyPair = {
           privateKey: hexToBytes(level1PrivateKeyHex),
           publicKey: getPublicKey(level1PrivateKeyHex, level1Curve),
-          curve: level1Curve,
+          curve: level1Curve as CurveName,
         };
 
         let level2Key: KeyPair | undefined;
@@ -45,7 +45,7 @@ export function useTicketEncode() {
           level2Key = {
             privateKey: hexToBytes(level2PrivateKeyHex),
             publicKey: getPublicKey(level2PrivateKeyHex, level2Curve),
-            curve: level2Curve,
+            curve: level2Curve as CurveName,
           };
         }
 
