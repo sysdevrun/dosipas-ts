@@ -12,7 +12,10 @@ Handles the full UIC barcode envelope (header versions 1 and 2), FCB rail ticket
 npm install dosipas-ts
 ```
 
-Requires Node.js 18+. ESM-only.
+## Requirements
+
+- **Node.js ≥ 20** — Node 18 is not supported because `globalThis.crypto` (Web Crypto API) is not available as a stable global until Node 20. The `@noble/curves` and `@noble/hashes` dependencies rely on it for cryptographic operations.
+- **ESM-only** — this package uses `"type": "module"` and provides only ESM exports.
 
 ## Decoding
 

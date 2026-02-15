@@ -31,7 +31,7 @@
   "author": "Théophile Helleboid <contact@sys-dev-run.fr>",
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "dependencies": {
     "@noble/curves": "^2.0.1",
