@@ -60,6 +60,7 @@ function decodedToInput(hex: string): UicBarcodeTicketInput {
         issuerPNR: rt.issuingDetail?.issuerPNR,
         intercodeIssuing: rt.issuingDetail?.intercodeIssuing
           ? {
+              extensionId: rt.issuingDetail.intercodeIssuing.extensionId,
               intercodeVersion: rt.issuingDetail.intercodeIssuing.intercodeVersion,
               intercodeInstanciation: rt.issuingDetail.intercodeIssuing.intercodeInstanciation,
               networkId: rt.issuingDetail.intercodeIssuing.networkId,

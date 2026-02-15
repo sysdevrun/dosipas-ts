@@ -151,6 +151,8 @@ export interface ProductRetailerData {
 }
 
 export interface IntercodeIssuingData {
+  /** Original extension ID string (e.g. "_3703II1" or "+FRII1"). */
+  extensionId: string;
   intercodeVersion: number;
   intercodeInstanciation: number;
   networkId: Uint8Array;
@@ -362,6 +364,8 @@ export interface IssuingDetailInput {
 }
 
 export interface IntercodeIssuingDataInput {
+  /** Override the generated extension ID (e.g. "+FRII1"). When omitted, defaults to `_<RICS>II1`. */
+  extensionId?: string;
   intercodeVersion?: number;
   intercodeInstanciation?: number;
   networkId: Uint8Array;

@@ -43,6 +43,7 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
   if (iss?.intercodeIssuing) {
     const ic = iss.intercodeIssuing;
     const intercodeIssuing: IntercodeIssuingDataInput = {
+      extensionId: ic.extensionId,
       intercodeVersion: ic.intercodeVersion,
       intercodeInstanciation: ic.intercodeInstanciation,
       networkId: ic.networkId,

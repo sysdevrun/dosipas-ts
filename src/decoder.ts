@@ -283,7 +283,9 @@ function decodeIssuingDetail(iss: any): IssuingDetail {
     const ext = iss.extension;
     if (isIntercodeIssuingExtension(ext.extensionId)) {
       try {
-        result.intercodeIssuing = getIntercodeIssuingCodec().decode(ext.extensionData) as IntercodeIssuingData;
+        const decoded = getIntercodeIssuingCodec().decode(ext.extensionData) as IntercodeIssuingData;
+        decoded.extensionId = ext.extensionId;
+        result.intercodeIssuing = decoded;
       } catch {
         result.extension = { extensionId: ext.extensionId, extensionData: ext.extensionData };
       }
