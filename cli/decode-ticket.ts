@@ -29,6 +29,9 @@ import {
   SOLEA_TICKET_HEX,
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
+  BUS_ARDECHE_TICKET_HEX,
+  BUS_AIN_TICKET_HEX,
+  DROME_BUS_TICKET_HEX,
 } from '../src/index';
 import { getSigningAlgorithm, getKeyAlgorithm } from '../src/oids';
 import type { UicBarcodeTicket, SecurityInfo, RailTicketData } from '../src/types';
@@ -44,6 +47,9 @@ const FIXTURES: Record<string, string> = {
   solea: SOLEA_TICKET_HEX,
   cts: CTS_TICKET_HEX,
   grand_est: GRAND_EST_U1_FCB3_HEX,
+  ardeche: BUS_ARDECHE_TICKET_HEX,
+  ain: BUS_AIN_TICKET_HEX,
+  drome: DROME_BUS_TICKET_HEX,
 };
 
 // ---------------------------------------------------------------------------
