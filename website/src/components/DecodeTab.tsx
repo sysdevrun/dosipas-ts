@@ -20,7 +20,8 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: 
   const [showCamera, setShowCamera] = useState(false);
   const [showHexViewer, setShowHexViewer] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
-  const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex);
+  const [trustFipsKey, setTrustFipsKey] = useState(true);
+  const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex, trustFipsKey);
 
   useEffect(() => {
     if (initialHex && initialHex !== hex) {
@@ -59,6 +60,16 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder }: 
         onChange={updateHex}
         onOpenCamera={() => setShowCamera(true)}
       />
+
+      <label className="flex items-center gap-2 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={trustFipsKey}
+          onChange={(e) => setTrustFipsKey(e.target.checked)}
+          className="rounded border-gray-300"
+        />
+        Trust FIPS public key for level 1 as RICS 9999, key id 0
+      </label>
 
       {showCamera && (
         <CameraScanner
