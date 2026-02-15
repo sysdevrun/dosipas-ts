@@ -552,6 +552,50 @@ export default function TicketForm({
           }
         }}
       >
+        {/* Extension ID format selector */}
+        {(() => {
+          const extId = value.railTicket.issuingDetail.intercodeIssuing?.extensionId;
+          const isCountryCode = extId ? /^\+[A-Z]{2}II1$/.test(extId) : false;
+          const countryCode = isCountryCode && extId ? extId.slice(1, 3) : '';
+          return (
+            <div className="col-span-2 flex items-center gap-3 mb-1">
+              <span className="text-xs text-gray-500">Extension ID</span>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="extensionIdFormat"
+                  checked={!isCountryCode}
+                  onChange={() => updateIntercodeIssuing({ extensionId: undefined })}
+                  className="text-blue-600"
+                />
+                <span className="text-xs text-gray-700">_RICS II1</span>
+              </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  name="extensionIdFormat"
+                  checked={isCountryCode}
+                  onChange={() => updateIntercodeIssuing({ extensionId: '+FRII1' })}
+                  className="text-blue-600"
+                />
+                <span className="text-xs text-gray-700">+CC II1</span>
+              </label>
+              {isCountryCode && (
+                <input
+                  type="text"
+                  value={countryCode}
+                  maxLength={2}
+                  onChange={(e) => {
+                    const cc = e.target.value.toUpperCase().replace(/[^A-Z]/g, '');
+                    updateIntercodeIssuing({ extensionId: cc.length === 2 ? `+${cc}II1` : extId });
+                  }}
+                  placeholder="FR"
+                  className="w-12 px-1 py-0.5 text-xs font-mono border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 uppercase"
+                />
+              )}
+            </div>
+          );
+        })()}
         <NumberField
           label="Intercode Version"
           value={value.railTicket.issuingDetail.intercodeIssuing?.intercodeVersion}
