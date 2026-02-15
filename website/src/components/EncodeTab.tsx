@@ -66,6 +66,8 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
   const [l2PubKey, setL2PubKey] = useState('');
 
   const [jsonOpen, setJsonOpen] = useState(false);
+  const [dynamicRefreshEnabled, setDynamicRefreshEnabled] = useState(false);
+  const [dynamicRefreshInterval, setDynamicRefreshInterval] = useState(10);
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const { hex, bytes, error, loading, encode } = useTicketEncode();
@@ -95,17 +97,17 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       return;
     }
     encode(input, l1PrivKey, l1Curve, l2Enabled ? l2PrivKey : '', l2Curve);
-    // Store params for regeneration when L2 is enabled
-    if (l2Enabled) {
+    // Start dynamic refresh countdown if enabled
+    if (l2Enabled && dynamicRefreshEnabled && input.dynamicData) {
       regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
-      setCountdown(10);
+      setCountdown(dynamicRefreshInterval);
     } else {
       regenRef.current = null;
       setCountdown(null);
     }
-  }, [input, l1PrivKey, l1Curve, l2Enabled, l2PrivKey, l2Curve, encode]);
+  }, [input, l1PrivKey, l1Curve, l2Enabled, l2PrivKey, l2Curve, encode, dynamicRefreshEnabled, dynamicRefreshInterval]);
 
-  // Level 2 signature regeneration: re-encode every 10 seconds
+  // Dynamic content refresh: re-encode periodically with updated day/time
   useEffect(() => {
     if (countdown === null) return;
 
@@ -113,25 +115,45 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       setCountdown((prev) => {
         if (prev === null) return null;
         if (prev <= 1) {
-          // Time to regenerate
+          // Time to regenerate with fresh dynamicContentDay/Time
           const params = regenRef.current;
           if (params) {
+            const now = new Date();
+            const startOfYear = new Date(now.getFullYear(), 0, 0);
+            const dayOfYear =
+              Math.floor(
+                (now.getTime() - startOfYear.getTime()) / 86400000,
+              ) - 1; // Jan 1 = 0
+            const secondsSinceMidnight =
+              now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+            const updatedInput: UicBarcodeTicketInput = {
+              ...params.input,
+              dynamicData: {
+                ...params.input.dynamicData!,
+                dynamicContentDay: dayOfYear,
+                dynamicContentTime: secondsSinceMidnight,
+              },
+            };
+            // Update both the ref and the form state
+            regenRef.current = { ...params, input: updatedInput };
+            setInput(updatedInput);
             encode(
-              params.input,
+              updatedInput,
               params.l1PrivKey,
               params.l1Curve,
               params.l2PrivKey,
               params.l2Curve,
             );
           }
-          return 10;
+          return dynamicRefreshInterval;
         }
         return prev - 1;
       });
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [countdown === null, encode]);
+  }, [countdown === null, encode, dynamicRefreshInterval]);
 
   // Update regeneration params when input or keys change (while regeneration is active)
   useEffect(() => {
@@ -140,13 +162,13 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
     }
   }, [input, l1PrivKey, l1Curve, l2PrivKey, l2Curve]);
 
-  // Stop regeneration when L2 is disabled
+  // Stop regeneration when L2 is disabled or dynamic refresh is turned off
   useEffect(() => {
-    if (!l2Enabled) {
+    if (!l2Enabled || !dynamicRefreshEnabled || !input.dynamicData) {
       regenRef.current = null;
       setCountdown(null);
     }
-  }, [l2Enabled]);
+  }, [l2Enabled, dynamicRefreshEnabled, input.dynamicData]);
 
   const copyHex = () => {
     navigator.clipboard.writeText(hex);
@@ -204,7 +226,15 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
       </div>
 
       {/* Ticket Form */}
-      <TicketForm value={input} onChange={setInput} />
+      <TicketForm
+        value={input}
+        onChange={setInput}
+        l2KeyPresent={l2Enabled && !!l2PrivKey}
+        dynamicRefreshEnabled={dynamicRefreshEnabled}
+        onDynamicRefreshChange={setDynamicRefreshEnabled}
+        dynamicRefreshInterval={dynamicRefreshInterval}
+        onDynamicRefreshIntervalChange={setDynamicRefreshInterval}
+      />
 
       {/* Encode button */}
       <div className="flex gap-3">

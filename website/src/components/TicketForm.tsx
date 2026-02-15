@@ -10,6 +10,11 @@ import type {
 interface Props {
   value: UicBarcodeTicketInput;
   onChange: (input: UicBarcodeTicketInput) => void;
+  l2KeyPresent?: boolean;
+  dynamicRefreshEnabled?: boolean;
+  onDynamicRefreshChange?: (enabled: boolean) => void;
+  dynamicRefreshInterval?: number;
+  onDynamicRefreshIntervalChange?: (seconds: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -332,7 +337,15 @@ const RETAIL_CHANNELS = [
 // Main form component
 // ---------------------------------------------------------------------------
 
-export default function TicketForm({ value, onChange }: Props) {
+export default function TicketForm({
+  value,
+  onChange,
+  l2KeyPresent,
+  dynamicRefreshEnabled,
+  onDynamicRefreshChange,
+  dynamicRefreshInterval,
+  onDynamicRefreshIntervalChange,
+}: Props) {
   const update = (partial: Partial<UicBarcodeTicketInput>) => {
     onChange({ ...value, ...partial });
   };
@@ -980,6 +993,38 @@ export default function TicketForm({ value, onChange }: Props) {
             })
           }
         />
+        {l2KeyPresent && (
+          <div className="col-span-2 space-y-2 border-t border-gray-100 pt-2 mt-1">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={dynamicRefreshEnabled ?? false}
+                onChange={(e) => onDynamicRefreshChange?.(e.target.checked)}
+                className="rounded border-gray-300"
+              />
+              <span className="text-xs text-gray-600">
+                Refresh dynamicContentDate and dynamicContentTime
+              </span>
+            </label>
+            {dynamicRefreshEnabled && (
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-gray-500">Interval</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={dynamicRefreshInterval ?? 10}
+                  onChange={(e) =>
+                    onDynamicRefreshIntervalChange?.(
+                      Math.max(1, Number(e.target.value)),
+                    )
+                  }
+                  className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                />
+                <span className="text-xs text-gray-500">seconds</span>
+              </div>
+            )}
+          </div>
+        )}
       </ToggleSection>
     </div>
   );
