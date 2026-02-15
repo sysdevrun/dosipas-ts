@@ -241,7 +241,9 @@ describe('controlTicket — network ID validation', () => {
   it('passes when network ID matches expected set', async () => {
     // SAMPLE_TICKET_HEX has _3703II1 intercode extension, network ID needs to be extracted
     const result = await controlTicket(SAMPLE_TICKET_HEX);
-    const iss = result.ticket?.railTickets[0]?.issuingDetail;
+    const rt = result.ticket?.level2SignedData.level1Data.dataSequence
+      .find(e => e.decoded)?.decoded;
+    const iss = rt?.issuingDetail;
     expect(iss?.intercodeIssuing).toBeDefined();
 
     const networkHex = Array.from(iss!.intercodeIssuing!.networkId)

@@ -9,6 +9,9 @@ import { decodeTicket } from './decoder';
 import { verifyLevel1Signature, verifyLevel2Signature } from './verifier';
 import type {
   UicBarcodeTicket,
+  UicRailTicketData,
+  UicDynamicContentData,
+  IntercodeDynamicData,
   CheckResult,
   ControlResult,
   ControlOptions,
@@ -24,46 +27,76 @@ function hexToBytes(hex: string): Uint8Array {
 }
 
 // ---------------------------------------------------------------------------
+// Accessor helpers — resolve new schema hierarchy
+// ---------------------------------------------------------------------------
+
+/** Infer header version from format string (U1→1, U2→2). */
+function headerVersion(ticket: UicBarcodeTicket): number {
+  const m = ticket.format.match(/^U(\d)$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/** Get the first decoded UicRailTicketData from dataSequence, if any. */
+function firstRailTicket(ticket: UicBarcodeTicket): UicRailTicketData | undefined {
+  for (const entry of ticket.level2SignedData.level1Data.dataSequence) {
+    if (entry.decoded) return entry.decoded;
+  }
+  return undefined;
+}
+
+/** Get decoded level2 dynamic content, narrowed to FDC1. */
+function fdc1Data(ticket: UicBarcodeTicket): UicDynamicContentData | undefined {
+  const l2 = ticket.level2SignedData.level2Data;
+  if (!l2 || l2.dataFormat !== 'FDC1') return undefined;
+  return l2.decoded as UicDynamicContentData | undefined;
+}
+
+/** Get decoded level2 dynamic content, narrowed to Intercode. */
+function intercodeDynamic(ticket: UicBarcodeTicket): IntercodeDynamicData | undefined {
+  const l2 = ticket.level2SignedData.level2Data;
+  if (!l2 || !/^_\d+\.ID1$/.test(l2.dataFormat)) return undefined;
+  return l2.decoded as IntercodeDynamicData | undefined;
+}
+
+// ---------------------------------------------------------------------------
 // Check helpers
 // ---------------------------------------------------------------------------
 
 function checkHeader(ticket: UicBarcodeTicket): CheckResult {
   const formatOk = ticket.format === 'U1' || ticket.format === 'U2';
-  const versionOk = ticket.headerVersion === 1 || ticket.headerVersion === 2;
-  const passed = formatOk && versionOk;
   return {
     name: 'Header',
-    passed,
+    passed: formatOk,
     severity: 'error',
-    message: passed
+    message: formatOk
       ? undefined
-      : `Unrecognized header: format=${ticket.format}, version=${ticket.headerVersion}`,
+      : `Unrecognized header format: ${ticket.format}`,
   };
 }
 
 function checkSecurityInfo(ticket: UicBarcodeTicket): CheckResult {
-  const s = ticket.security;
+  const l1 = ticket.level2SignedData.level1Data;
   const issues: string[] = [];
 
   // Level 1 (mandatory)
-  if (s.securityProviderNum == null && !s.securityProviderIA5) {
+  if (l1.securityProviderNum == null && !l1.securityProviderIA5) {
     issues.push('missing security provider');
   }
-  if (s.keyId == null) {
+  if (l1.keyId == null) {
     issues.push('missing keyId');
   }
   // level1SigningAlg is only available in v2 headers; v1 headers don't include OID fields
-  if (ticket.headerVersion >= 2 && !s.level1SigningAlg) {
+  if (headerVersion(ticket) >= 2 && !l1.level1SigningAlg) {
     issues.push('missing level1SigningAlg');
   }
-  if (!s.level1Signature) {
+  if (!ticket.level2SignedData.level1Signature) {
     issues.push('missing level1Signature');
   }
 
   // Level 2 (conditional)
-  if (s.level2SigningAlg) {
-    if (!s.level2KeyAlg) issues.push('level2SigningAlg set but missing level2KeyAlg');
-    if (!s.level2PublicKey) issues.push('level2SigningAlg set but missing level2PublicKey');
+  if (l1.level2SigningAlg) {
+    if (!l1.level2KeyAlg) issues.push('level2SigningAlg set but missing level2KeyAlg');
+    if (!l1.level2PublicKey) issues.push('level2SigningAlg set but missing level2PublicKey');
     if (!ticket.level2Signature) issues.push('level2SigningAlg set but missing level2Signature');
   }
 
@@ -90,11 +123,11 @@ async function checkLevel1Signature(
   }
 
   try {
-    const s = ticket.security;
+    const l1 = ticket.level2SignedData.level1Data;
     const pubKey = await options.level1KeyProvider.getPublicKey(
-      { num: s.securityProviderNum, ia5: s.securityProviderIA5 },
-      s.keyId ?? 0,
-      s.level1KeyAlg,
+      { num: l1.securityProviderNum, ia5: l1.securityProviderIA5 },
+      l1.keyId ?? 0,
+      l1.level1KeyAlg,
     );
     const result = await verifyLevel1Signature(bytes, pubKey);
     return {
@@ -117,7 +150,7 @@ async function checkLevel2Signature(
   bytes: Uint8Array,
   ticket: UicBarcodeTicket,
 ): Promise<CheckResult> {
-  if (!ticket.security.level2SigningAlg) {
+  if (!ticket.level2SignedData.level1Data.level2SigningAlg) {
     return {
       name: 'Level 2 Signature',
       passed: true,
@@ -145,14 +178,14 @@ async function checkLevel2Signature(
 }
 
 function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
-  const s = ticket.security;
+  const l1 = ticket.level2SignedData.level1Data;
 
-  if (ticket.headerVersion === 2 && s.endOfValidityYear != null && s.endOfValidityDay != null) {
+  if (headerVersion(ticket) >= 2 && l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
     // v2 header: compute expiry from end-of-validity fields
-    const year = s.endOfValidityYear;
-    const day = s.endOfValidityDay;
-    const timeMinutes = s.endOfValidityTime ?? 0;
-    const durationMinutes = s.validityDuration ?? 0;
+    const year = l1.endOfValidityYear;
+    const day = l1.endOfValidityDay;
+    const timeMinutes = l1.endOfValidityTime ?? 0;
+    const durationMinutes = l1.validityDuration ?? 0;
 
     // Compute date from year + day-of-year
     const expiry = new Date(Date.UTC(year, 0, day, 0, timeMinutes + durationMinutes));
@@ -166,11 +199,11 @@ function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
   }
 
   // v1 header: use issuing date + validityDuration
-  const rt = ticket.railTickets[0];
+  const rt = firstRailTicket(ticket);
   const iss = rt?.issuingDetail;
-  if (iss && s.validityDuration != null) {
+  if (iss && l1.validityDuration != null) {
     const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
-    const expiry = new Date(issuingDate.getTime() + s.validityDuration * 60 * 1000);
+    const expiry = new Date(issuingDate.getTime() + l1.validityDuration * 60 * 1000);
     const passed = now < expiry;
     return {
       name: 'Not Expired',
@@ -189,7 +222,7 @@ function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
 }
 
 function checkNotSpecimen(ticket: UicBarcodeTicket): CheckResult {
-  const specimen = ticket.railTickets[0]?.issuingDetail?.specimen;
+  const specimen = firstRailTicket(ticket)?.issuingDetail?.specimen;
   return {
     name: 'Not Specimen',
     passed: !specimen,
@@ -199,7 +232,7 @@ function checkNotSpecimen(ticket: UicBarcodeTicket): CheckResult {
 }
 
 function checkActivated(ticket: UicBarcodeTicket): CheckResult {
-  const activated = ticket.railTickets[0]?.issuingDetail?.activated;
+  const activated = firstRailTicket(ticket)?.issuingDetail?.activated;
   return {
     name: 'Activated',
     passed: !!activated,
@@ -210,11 +243,11 @@ function checkActivated(ticket: UicBarcodeTicket): CheckResult {
 
 function checkIssuingDetail(ticket: UicBarcodeTicket): CheckResult {
   const issues: string[] = [];
+  const rt = firstRailTicket(ticket);
 
-  if (ticket.railTickets.length === 0) {
-    issues.push('no rail ticket present');
+  if (!rt) {
+    issues.push('no decoded rail ticket present');
   } else {
-    const rt = ticket.railTickets[0];
     if (!rt.issuingDetail) {
       issues.push('missing issuingDetail');
     } else {
@@ -234,7 +267,7 @@ function checkIssuingDetail(ticket: UicBarcodeTicket): CheckResult {
 }
 
 function checkTransportDocument(ticket: UicBarcodeTicket): CheckResult {
-  const docs = ticket.railTickets[0]?.transportDocument;
+  const docs = firstRailTicket(ticket)?.transportDocument;
   if (!docs || docs.length === 0) {
     return {
       name: 'Transport Document',
@@ -244,13 +277,14 @@ function checkTransportDocument(ticket: UicBarcodeTicket): CheckResult {
     };
   }
 
-  const invalid = docs.filter(d => !d.ticketType);
+  // In new structure, each doc has ticket: { key, value } — check that key exists
+  const invalid = docs.filter(d => !d.ticket?.key);
   if (invalid.length > 0) {
     return {
       name: 'Transport Document',
       passed: false,
       severity: 'error',
-      message: `${invalid.length} transport document(s) missing ticketType`,
+      message: `${invalid.length} transport document(s) missing ticket type`,
     };
   }
 
@@ -265,7 +299,7 @@ function checkIntercodeExtension(
   ticket: UicBarcodeTicket,
   options: ControlOptions,
 ): CheckResult {
-  const iss = ticket.railTickets[0]?.issuingDetail;
+  const iss = firstRailTicket(ticket)?.issuingDetail;
 
   if (iss?.intercodeIssuing) {
     // Extension decoded successfully — check network ID if expected
@@ -319,7 +353,9 @@ function checkIntercodeExtension(
 }
 
 function checkDynamicData(ticket: UicBarcodeTicket): CheckResult {
-  if (!ticket.level2DataBlock) {
+  const l2 = ticket.level2SignedData.level2Data;
+
+  if (!l2) {
     return {
       name: 'Dynamic Data',
       passed: true,
@@ -329,8 +365,8 @@ function checkDynamicData(ticket: UicBarcodeTicket): CheckResult {
   }
 
   // FDC1 format
-  if (ticket.level2DataBlock.dataFormat === 'FDC1') {
-    if (!ticket.dynamicContentData) {
+  if (l2.dataFormat === 'FDC1') {
+    if (!l2.decoded) {
       return {
         name: 'Dynamic Data',
         passed: false,
@@ -342,13 +378,13 @@ function checkDynamicData(ticket: UicBarcodeTicket): CheckResult {
   }
 
   // Intercode _RICS.ID1 format
-  if (/^_\d+\.ID1$/.test(ticket.level2DataBlock.dataFormat)) {
-    if (!ticket.dynamicData) {
+  if (/^_\d+\.ID1$/.test(l2.dataFormat)) {
+    if (!l2.decoded) {
       return {
         name: 'Dynamic Data',
         passed: false,
         severity: 'warning',
-        message: `${ticket.level2DataBlock.dataFormat} data block present but decoding failed`,
+        message: `${l2.dataFormat} data block present but decoding failed`,
       };
     }
     return { name: 'Dynamic Data', passed: true, severity: 'warning' };
@@ -358,7 +394,7 @@ function checkDynamicData(ticket: UicBarcodeTicket): CheckResult {
     name: 'Dynamic Data',
     passed: true,
     severity: 'info',
-    message: `Unknown level 2 data format: ${ticket.level2DataBlock.dataFormat}`,
+    message: `Unknown level 2 data format: ${l2.dataFormat}`,
   };
 }
 
@@ -366,11 +402,13 @@ function checkDynamicContentFreshness(
   ticket: UicBarcodeTicket,
   now: Date,
 ): CheckResult {
-  const iss = ticket.railTickets[0]?.issuingDetail;
+  const iss = firstRailTicket(ticket)?.issuingDetail;
+  const l1 = ticket.level2SignedData.level1Data;
 
   // FDC1 dynamic content
-  if (ticket.dynamicContentData?.dynamicContentTimeStamp) {
-    const ts = ticket.dynamicContentData.dynamicContentTimeStamp;
+  const fdc = fdc1Data(ticket);
+  if (fdc?.dynamicContentTimeStamp) {
+    const ts = fdc.dynamicContentTimeStamp;
     if (!iss) {
       return {
         name: 'Dynamic Content Freshness',
@@ -380,7 +418,7 @@ function checkDynamicContentFreshness(
       };
     }
 
-    const validityDuration = ticket.security.validityDuration;
+    const validityDuration = l1.validityDuration;
     if (validityDuration == null) {
       return {
         name: 'Dynamic Content Freshness',
@@ -406,8 +444,8 @@ function checkDynamicContentFreshness(
   }
 
   // Intercode dynamic data
-  if (ticket.dynamicData) {
-    const dd = ticket.dynamicData;
+  const dd = intercodeDynamic(ticket);
+  if (dd) {
     if (!iss) {
       return {
         name: 'Dynamic Content Freshness',
@@ -430,8 +468,8 @@ function checkDynamicContentFreshness(
     let durationMs: number | undefined;
     if (dd.dynamicContentDuration != null) {
       durationMs = dd.dynamicContentDuration * 1000;
-    } else if (ticket.security.validityDuration != null) {
-      durationMs = ticket.security.validityDuration * 60 * 1000;
+    } else if (l1.validityDuration != null) {
+      durationMs = l1.validityDuration * 60 * 1000;
     }
 
     if (durationMs == null) {

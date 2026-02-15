@@ -169,9 +169,9 @@ function TravelerSection({ result }: { result: ControlResult }) {
   if (!result.ticket) return null;
 
   const travelers: TravelerInfo[] = [];
-  for (const rt of result.ticket.railTickets) {
-    if (rt.travelerDetail?.traveler) {
-      travelers.push(...rt.travelerDetail.traveler);
+  for (const entry of result.ticket.level2SignedData.level1Data.dataSequence) {
+    if (entry.decoded?.travelerDetail?.traveler) {
+      travelers.push(...entry.decoded.travelerDetail.traveler);
     }
   }
 
