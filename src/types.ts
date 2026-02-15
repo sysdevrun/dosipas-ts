@@ -151,6 +151,8 @@ export interface ProductRetailerData {
 }
 
 export interface IntercodeIssuingData {
+  /** Original extension ID string (e.g. "_3703II1" or "+FRII1"). */
+  extensionId: string;
   intercodeVersion: number;
   intercodeInstanciation: number;
   networkId: Uint8Array;
