@@ -524,9 +524,9 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
               fipsTestKey={FIPS_TEST_KEY_2}
             />
 
-            {/* Level 2 Dynamic Data */}
+            {/* level2Data */}
             <ToggleSection
-              title="Level 2 Dynamic Data"
+              title="level2Data"
               enabled={hasDynamic}
               onToggle={(v) => {
                 if (v) {
@@ -584,7 +584,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
               {dynamicFormat === 'fdc1' && (
                 <>
                   <NumberField
-                    label="Timestamp Day"
+                    label="dynamicContentTimeStamp.day"
                     value={input.dynamicContentData?.dynamicContentTimeStamp?.day}
                     onChange={(v) => {
                       const ts = input.dynamicContentData?.dynamicContentTimeStamp;
@@ -599,7 +599,7 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
                     placeholder="Day of year (1-366)"
                   />
                   <NumberField
-                    label="Timestamp Time"
+                    label="dynamicContentTimeStamp.time"
                     value={input.dynamicContentData?.dynamicContentTimeStamp?.time}
                     onChange={(v) => {
                       const ts = input.dynamicContentData?.dynamicContentTimeStamp;
@@ -619,28 +619,28 @@ export default function EncodeTab({ onDecode, prefillInput, onPrefillConsumed }:
               {dynamicFormat === 'intercode' && (
                 <>
                   <NumberField
-                    label="RICS"
+                    label="rics"
                     value={input.dynamicData?.rics}
                     onChange={(v) => updateDynamicData({ rics: v ?? 0 })}
                     placeholder="e.g. 3703"
                   />
                   <NumberField
-                    label="Day"
+                    label="dynamicContentDay"
                     value={input.dynamicData?.dynamicContentDay}
                     onChange={(v) => updateDynamicData({ dynamicContentDay: v })}
                   />
                   <OptionalNumberField
-                    label="Time"
+                    label="dynamicContentTime"
                     value={input.dynamicData?.dynamicContentTime}
                     onChange={(v) => updateDynamicData({ dynamicContentTime: v })}
                   />
                   <OptionalNumberField
-                    label="UTC Offset"
+                    label="dynamicContentUTCOffset"
                     value={input.dynamicData?.dynamicContentUTCOffset}
                     onChange={(v) => updateDynamicData({ dynamicContentUTCOffset: v })}
                   />
                   <OptionalNumberField
-                    label="Duration"
+                    label="dynamicContentDuration"
                     value={input.dynamicData?.dynamicContentDuration}
                     onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
                   />

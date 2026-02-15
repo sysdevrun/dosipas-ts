@@ -395,10 +395,10 @@ export default function TicketForm({
 
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <Section title="Header">
+      {/* UicBarcodeHeader */}
+      <Section title="UicBarcodeHeader">
         <SelectField
-          label="Header Version"
+          label="headerVersion"
           value={value.headerVersion}
           options={[
             { label: 'v2', value: 2 },
@@ -407,7 +407,7 @@ export default function TicketForm({
           onChange={(v) => update({ headerVersion: v })}
         />
         <SelectField
-          label="FCB Version"
+          label="fcbVersion"
           value={value.fcbVersion}
           options={[
             { label: 'FCB3', value: 3 },
@@ -418,125 +418,125 @@ export default function TicketForm({
         />
       </Section>
 
-      {/* Security */}
-      <Section title="Security">
+      {/* level1Data */}
+      <Section title="level1Data">
         <NumberField
-          label="Provider (RICS)"
+          label="securityProviderNum"
           value={value.securityProviderNum}
           onChange={(v) => update({ securityProviderNum: v })}
           placeholder="e.g. 1187"
         />
         <NumberField
-          label="Key ID"
+          label="keyId"
           value={value.keyId}
           onChange={(v) => update({ keyId: v })}
           placeholder="e.g. 1"
         />
         <OptionalNumberField
-          label="End of Validity Year"
+          label="endOfValidityYear"
           value={value.endOfValidityYear}
           onChange={(v) => update({ endOfValidityYear: v })}
           placeholder="2016-2269"
           defaultValue={now.getFullYear()}
         />
         <OptionalNumberField
-          label="End of Validity Day"
+          label="endOfValidityDay"
           value={value.endOfValidityDay}
           onChange={(v) => update({ endOfValidityDay: v })}
           placeholder="1-366"
           defaultValue={dayOfYear}
         />
         <OptionalNumberField
-          label="End of Validity Time"
+          label="endOfValidityTime"
           value={value.endOfValidityTime}
           onChange={(v) => update({ endOfValidityTime: v })}
           placeholder="0-1439 (minutes)"
         />
         <OptionalNumberField
-          label="Validity Duration"
+          label="validityDuration"
           value={value.validityDuration}
           onChange={(v) => update({ validityDuration: v })}
           placeholder="1-3600 (minutes)"
         />
       </Section>
 
-      {/* Issuing Detail */}
-      <Section title="Issuing Detail">
+      {/* issuingDetail */}
+      <Section title="issuingDetail">
         <OptionalNumberField
-          label="Security Provider (RICS)"
+          label="securityProviderNum"
           value={value.railTicket.issuingDetail.securityProviderNum}
           onChange={(v) => updateIssuing({ securityProviderNum: v })}
           placeholder="e.g. 1187"
         />
         <OptionalNumberField
-          label="Issuer (RICS)"
+          label="issuerNum"
           value={value.railTicket.issuingDetail.issuerNum}
           onChange={(v) => updateIssuing({ issuerNum: v })}
           placeholder="e.g. 1187"
         />
         <NumberField
-          label="Issuing Year"
+          label="issuingYear"
           value={value.railTicket.issuingDetail.issuingYear}
           onChange={(v) => updateIssuing({ issuingYear: v ?? now.getFullYear() })}
           placeholder={String(now.getFullYear())}
         />
         <NumberField
-          label="Issuing Day"
+          label="issuingDay"
           value={value.railTicket.issuingDetail.issuingDay}
           onChange={(v) => updateIssuing({ issuingDay: v ?? dayOfYear })}
           placeholder={String(dayOfYear)}
         />
         <OptionalNumberField
-          label="Issuing Time"
+          label="issuingTime"
           value={value.railTicket.issuingDetail.issuingTime}
           onChange={(v) => updateIssuing({ issuingTime: v })}
           placeholder="Minutes since midnight"
         />
         <OptionalTextField
-          label="Issuer Name"
+          label="issuerName"
           value={value.railTicket.issuingDetail.issuerName}
           onChange={(v) => updateIssuing({ issuerName: v })}
           placeholder="e.g. SNCF"
         />
         <OptionalTextField
-          label="Currency"
+          label="currency"
           value={value.railTicket.issuingDetail.currency}
           onChange={(v) => updateIssuing({ currency: v })}
           placeholder="EUR"
         />
         <OptionalNumberField
-          label="Currency Fract"
+          label="currencyFract"
           value={value.railTicket.issuingDetail.currencyFract}
           onChange={(v) => updateIssuing({ currencyFract: v })}
           placeholder="e.g. 2"
         />
         <OptionalTextField
-          label="PNR"
+          label="issuerPNR"
           value={value.railTicket.issuingDetail.issuerPNR}
           onChange={(v) => updateIssuing({ issuerPNR: v })}
         />
         <div className="col-span-2 flex gap-4">
           <CheckboxField
-            label="Specimen"
+            label="specimen"
             value={value.railTicket.issuingDetail.specimen}
             onChange={(v) => updateIssuing({ specimen: v })}
           />
           <CheckboxField
-            label="Secure Paper"
+            label="securePaperTicket"
             value={value.railTicket.issuingDetail.securePaperTicket}
             onChange={(v) => updateIssuing({ securePaperTicket: v })}
           />
           <CheckboxField
-            label="Activated"
+            label="activated"
             value={value.railTicket.issuingDetail.activated}
             onChange={(v) => updateIssuing({ activated: v })}
           />
         </div>
       </Section>
 
-      {/* Intercode 6 Issuing */}
+      {/* intercodeIssuing */}
       <ToggleSection
-        title="Intercode 6 Issuing"
+        title="intercodeIssuing"
         enabled={hasIntercode}
         onToggle={(v) => {
           if (v) {
@@ -597,29 +597,29 @@ export default function TicketForm({
           );
         })()}
         <NumberField
-          label="Intercode Version"
+          label="intercodeVersion"
           value={value.railTicket.issuingDetail.intercodeIssuing?.intercodeVersion}
           onChange={(v) => updateIntercodeIssuing({ intercodeVersion: v ?? 1 })}
         />
         <NumberField
-          label="Intercode Instanciation"
+          label="intercodeInstanciation"
           value={value.railTicket.issuingDetail.intercodeIssuing?.intercodeInstanciation}
           onChange={(v) => updateIntercodeIssuing({ intercodeInstanciation: v ?? 1 })}
         />
         <BytesHexField
-          label="Network ID (hex)"
+          label="networkId"
           value={value.railTicket.issuingDetail.intercodeIssuing?.networkId}
           onChange={(v) => updateIntercodeIssuing({ networkId: v })}
           placeholder="e.g. 0087"
         />
         <div /> {/* spacer */}
 
-        {/* Product Retailer sub-section */}
+        {/* productRetailer sub-section */}
         <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Product Retailer</span>
+          <span className="text-xs text-gray-400">productRetailer</span>
         </div>
         <StringSelectField
-          label="Retail Channel"
+          label="retailChannel"
           value={value.railTicket.issuingDetail.intercodeIssuing?.productRetailer?.retailChannel}
           options={RETAIL_CHANNELS}
           onChange={(v) =>
@@ -633,7 +633,7 @@ export default function TicketForm({
           allowEmpty
         />
         <OptionalNumberField
-          label="Generator ID"
+          label="retailGeneratorId"
           value={value.railTicket.issuingDetail.intercodeIssuing?.productRetailer?.retailGeneratorId}
           onChange={(v) =>
             updateIntercodeIssuing({
@@ -645,7 +645,7 @@ export default function TicketForm({
           }
         />
         <OptionalNumberField
-          label="Server ID"
+          label="retailServerId"
           value={value.railTicket.issuingDetail.intercodeIssuing?.productRetailer?.retailServerId}
           onChange={(v) =>
             updateIntercodeIssuing({
@@ -657,7 +657,7 @@ export default function TicketForm({
           }
         />
         <OptionalNumberField
-          label="Retailer ID"
+          label="retailerId"
           value={value.railTicket.issuingDetail.intercodeIssuing?.productRetailer?.retailerId}
           onChange={(v) =>
             updateIntercodeIssuing({
@@ -669,7 +669,7 @@ export default function TicketForm({
           }
         />
         <OptionalNumberField
-          label="Retail Point ID"
+          label="retailPointId"
           value={value.railTicket.issuingDetail.intercodeIssuing?.productRetailer?.retailPointId}
           onChange={(v) =>
             updateIntercodeIssuing({
@@ -682,9 +682,9 @@ export default function TicketForm({
         />
       </ToggleSection>
 
-      {/* Traveler Detail */}
+      {/* travelerDetail */}
       <ToggleSection
-        title="Traveler Detail"
+        title="travelerDetail"
         enabled={hasTraveler}
         onToggle={(v) => {
           onChange({
@@ -697,132 +697,132 @@ export default function TicketForm({
         }}
       >
         <OptionalTextField
-          label="Preferred Language"
+          label="preferredLanguage"
           value={value.railTicket.travelerDetail?.preferredLanguage}
           onChange={(v) => updateTraveler({ preferredLanguage: v })}
           placeholder="e.g. EN"
         />
         <OptionalTextField
-          label="Group Name"
+          label="groupName"
           value={value.railTicket.travelerDetail?.groupName}
           onChange={(v) => updateTraveler({ groupName: v })}
         />
 
         <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Traveler</span>
+          <span className="text-xs text-gray-400">traveler[0]</span>
         </div>
 
         <OptionalTextField
-          label="First Name"
+          label="firstName"
           value={traveler?.firstName}
           onChange={(v) => updateTravelerPerson({ firstName: v })}
         />
         <OptionalTextField
-          label="Second Name"
+          label="secondName"
           value={traveler?.secondName}
           onChange={(v) => updateTravelerPerson({ secondName: v })}
         />
         <OptionalTextField
-          label="Last Name"
+          label="lastName"
           value={traveler?.lastName}
           onChange={(v) => updateTravelerPerson({ lastName: v })}
         />
         <OptionalTextField
-          label="Title"
+          label="title"
           value={traveler?.title}
           onChange={(v) => updateTravelerPerson({ title: v })}
         />
         <StringSelectField
-          label="Gender"
+          label="gender"
           value={traveler?.gender}
           options={[
-            { label: 'Male', value: 'male' },
-            { label: 'Female', value: 'female' },
-            { label: 'Other', value: 'other' },
+            { label: 'male', value: 'male' },
+            { label: 'female', value: 'female' },
+            { label: 'other', value: 'other' },
           ]}
           onChange={(v) => updateTravelerPerson({ gender: v })}
           allowEmpty
         />
         <OptionalTextField
-          label="ID Card"
+          label="idCard"
           value={traveler?.idCard}
           onChange={(v) => updateTravelerPerson({ idCard: v })}
         />
         <OptionalTextField
-          label="Passport ID"
+          label="passportId"
           value={traveler?.passportId}
           onChange={(v) => updateTravelerPerson({ passportId: v })}
         />
         <OptionalTextField
-          label="Customer ID (IA5)"
+          label="customerIdIA5"
           value={traveler?.customerIdIA5}
           onChange={(v) => updateTravelerPerson({ customerIdIA5: v })}
         />
         <OptionalNumberField
-          label="Customer ID (num)"
+          label="customerIdNum"
           value={traveler?.customerIdNum}
           onChange={(v) => updateTravelerPerson({ customerIdNum: v })}
         />
         <OptionalNumberField
-          label="Year of Birth"
+          label="yearOfBirth"
           value={traveler?.yearOfBirth}
           onChange={(v) => updateTravelerPerson({ yearOfBirth: v })}
           placeholder="e.g. 1990"
         />
         <OptionalNumberField
-          label="Month of Birth"
+          label="monthOfBirth"
           value={traveler?.monthOfBirth}
           onChange={(v) => updateTravelerPerson({ monthOfBirth: v })}
           placeholder="1-12"
         />
         <OptionalNumberField
-          label="Day of Birth (v1)"
+          label="dayOfBirth"
           value={traveler?.dayOfBirth}
           onChange={(v) => updateTravelerPerson({ dayOfBirth: v })}
           placeholder="0-370 (day of year)"
         />
         <OptionalNumberField
-          label="Day of Birth in Month (v2/v3)"
+          label="dayOfBirthInMonth"
           value={traveler?.dayOfBirthInMonth}
           onChange={(v) => updateTravelerPerson({ dayOfBirthInMonth: v })}
           placeholder="1-31"
         />
         <CheckboxField
-          label="Ticket Holder"
+          label="ticketHolder"
           value={traveler?.ticketHolder}
           onChange={(v) => updateTravelerPerson({ ticketHolder: v })}
         />
         <OptionalTextField
-          label="Passenger Type"
+          label="passengerType"
           value={traveler?.passengerType as string | undefined}
           onChange={(v) => updateTravelerPerson({ passengerType: v })}
         />
         <CheckboxField
-          label="Reduced Mobility"
+          label="passengerWithReducedMobility"
           value={traveler?.passengerWithReducedMobility}
           onChange={(v) => updateTravelerPerson({ passengerWithReducedMobility: v })}
         />
         <OptionalNumberField
-          label="Country of Residence"
+          label="countryOfResidence"
           value={traveler?.countryOfResidence}
           onChange={(v) => updateTravelerPerson({ countryOfResidence: v })}
         />
         <OptionalNumberField
-          label="Country of Passport"
+          label="countryOfPassport"
           value={traveler?.countryOfPassport}
           onChange={(v) => updateTravelerPerson({ countryOfPassport: v })}
         />
         <OptionalNumberField
-          label="Country of ID Card"
+          label="countryOfIdCard"
           value={traveler?.countryOfIdCard}
           onChange={(v) => updateTravelerPerson({ countryOfIdCard: v })}
         />
       </ToggleSection>
 
-      {/* Transport Documents */}
-      <Section title="Transport Documents">
+      {/* transportDocument */}
+      <Section title="transportDocument">
         <JsonField
-          label="Documents (JSON array)"
+          label="transportDocument"
           value={value.railTicket.transportDocument}
           onChange={(v) =>
             onChange({
@@ -833,9 +833,9 @@ export default function TicketForm({
         />
       </Section>
 
-      {/* Control Detail */}
+      {/* controlDetail */}
       <ToggleSection
-        title="Control Detail"
+        title="controlDetail"
         enabled={hasControl}
         onToggle={(v) => {
           onChange({
@@ -848,7 +848,7 @@ export default function TicketForm({
         }}
       >
         <CheckboxField
-          label="ID by ID Card"
+          label="identificationByIdCard"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.identificationByIdCard as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -861,7 +861,7 @@ export default function TicketForm({
           }
         />
         <CheckboxField
-          label="ID by Passport"
+          label="identificationByPassportId"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.identificationByPassportId as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -874,7 +874,7 @@ export default function TicketForm({
           }
         />
         <CheckboxField
-          label="Passport Validation Required"
+          label="passportValidationRequired"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.passportValidationRequired as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -887,7 +887,7 @@ export default function TicketForm({
           }
         />
         <CheckboxField
-          label="Online Validation Required"
+          label="onlineValidationRequired"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.onlineValidationRequired as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -900,7 +900,7 @@ export default function TicketForm({
           }
         />
         <CheckboxField
-          label="Age Check Required"
+          label="ageCheckRequired"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.ageCheckRequired as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -913,7 +913,7 @@ export default function TicketForm({
           }
         />
         <CheckboxField
-          label="Reduction Card Check Required"
+          label="reductionCardCheckRequired"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.reductionCardCheckRequired as boolean | undefined}
           onChange={(v) =>
             onChange({
@@ -927,7 +927,7 @@ export default function TicketForm({
         />
         <div className="col-span-2">
           <TextField
-            label="Info Text"
+            label="infoText"
             value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.infoText as string | undefined}
             onChange={(v) =>
               onChange({
@@ -941,7 +941,7 @@ export default function TicketForm({
           />
         </div>
         <JsonField
-          label="Card References (JSON)"
+          label="identificationByCardReference"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.identificationByCardReference}
           onChange={(v) =>
             onChange({
@@ -954,7 +954,7 @@ export default function TicketForm({
           }
         />
         <JsonField
-          label="Included Tickets (JSON)"
+          label="includedTickets"
           value={(value.railTicket.controlDetail as Record<string, unknown> | undefined)?.includedTickets}
           onChange={(v) =>
             onChange({
