@@ -362,6 +362,8 @@ export interface IssuingDetailInput {
 }
 
 export interface IntercodeIssuingDataInput {
+  /** Override the generated extension ID (e.g. "+FRII1"). When omitted, defaults to `_<RICS>II1`. */
+  extensionId?: string;
   intercodeVersion?: number;
   intercodeInstanciation?: number;
   networkId: Uint8Array;

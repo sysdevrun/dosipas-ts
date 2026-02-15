@@ -171,7 +171,7 @@ function encodeRailTicket(fcbVersion: number, input: UicBarcodeTicketInput): Uin
       productRetailer: iss.intercodeIssuing.productRetailer,
     });
     extension = {
-      extensionId: `_${rics}II1`,
+      extensionId: iss.intercodeIssuing.extensionId ?? `_${rics}II1`,
       extensionData: issuingBytes,
     };
   }
