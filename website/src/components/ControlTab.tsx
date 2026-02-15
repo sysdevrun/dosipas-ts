@@ -247,14 +247,127 @@ function ChecksList({ result }: { result: ControlResult }) {
 }
 
 // ---------------------------------------------------------------------------
+// localStorage helpers for network IDs
+// ---------------------------------------------------------------------------
+
+const NETWORK_IDS_KEY = 'control-expected-network-ids';
+
+function loadNetworkIds(): string[] {
+  try {
+    const raw = localStorage.getItem(NETWORK_IDS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')) {
+      return parsed as string[];
+    }
+  } catch { /* ignore corrupt data */ }
+  return [];
+}
+
+function saveNetworkIds(ids: string[]) {
+  localStorage.setItem(NETWORK_IDS_KEY, JSON.stringify(ids));
+}
+
+// ---------------------------------------------------------------------------
+// Network IDs editor
+// ---------------------------------------------------------------------------
+
+function NetworkIdsEditor({
+  networkIds,
+  onChange,
+}: {
+  networkIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [draft, setDraft] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const addId = () => {
+    const clean = draft.replace(/\s/g, '').toLowerCase();
+    if (!/^[0-9a-f]{6}$/.test(clean)) {
+      setValidationError('Must be exactly 3 bytes (6 hex characters)');
+      return;
+    }
+    if (networkIds.includes(clean)) {
+      setValidationError('Already added');
+      return;
+    }
+    const next = [...networkIds, clean];
+    onChange(next);
+    setDraft('');
+    setValidationError(null);
+  };
+
+  const removeId = (id: string) => {
+    onChange(networkIds.filter((v) => v !== id));
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-500">
+        Expected Intercode network IDs (3 bytes, hex)
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setValidationError(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              addId();
+            }
+          }}
+          placeholder="e.g. 250502"
+          maxLength={6}
+          className="flex-1 min-w-0 rounded border border-gray-300 px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-400"
+        />
+        <button
+          onClick={addId}
+          className="text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 px-2.5 py-1 rounded transition-colors"
+        >
+          Add
+        </button>
+      </div>
+      {validationError && (
+        <p className="text-xs text-red-600">{validationError}</p>
+      )}
+      {networkIds.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {networkIds.map((id) => (
+            <span
+              key={id}
+              className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs font-mono px-2 py-0.5 rounded"
+            >
+              {id}
+              <button
+                onClick={() => removeId(id)}
+                className="text-blue-400 hover:text-red-500 font-bold leading-none"
+              >
+                x
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main ControlTab component
 // ---------------------------------------------------------------------------
 
 export default function ControlTab({ initialHex, onHexChange }: Props) {
   const [hex, setHex] = useState(initialHex);
   const [showCamera, setShowCamera] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
-  const { result, error, loading } = useTicketControl(hex, trustFipsKey);
+  const [networkIds, setNetworkIds] = useState(loadNetworkIds);
+  const { result, error, loading } = useTicketControl(hex, trustFipsKey, networkIds);
 
   useEffect(() => {
     if (initialHex && initialHex !== hex) {
@@ -271,6 +384,11 @@ export default function ControlTab({ initialHex, onHexChange }: Props) {
     }
   };
 
+  const updateNetworkIds = (ids: string[]) => {
+    setNetworkIds(ids);
+    saveNetworkIds(ids);
+  };
+
   return (
     <div className="space-y-6">
       <HexInput
@@ -279,15 +397,28 @@ export default function ControlTab({ initialHex, onHexChange }: Props) {
         onOpenCamera={() => setShowCamera(true)}
       />
 
-      <label className="flex items-center gap-2 text-xs text-gray-600">
-        <input
-          type="checkbox"
-          checked={trustFipsKey}
-          onChange={(e) => setTrustFipsKey(e.target.checked)}
-          className="rounded border-gray-300"
-        />
-        Trust FIPS public key for level 1 as RICS 9999, key id 0
-      </label>
+      {/* Collapsible Settings section */}
+      <details
+        open={settingsOpen}
+        onToggle={(e) => setSettingsOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-500 uppercase tracking-wide hover:text-gray-700">
+          Settings
+        </summary>
+        <div className="mt-3 space-y-4 pl-1">
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustFipsKey}
+              onChange={(e) => setTrustFipsKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust FIPS public key for level 1 as RICS 9999, key id 0
+          </label>
+
+          <NetworkIdsEditor networkIds={networkIds} onChange={updateNetworkIds} />
+        </div>
+      </details>
 
       {showCamera && (
         <CameraScanner

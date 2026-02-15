@@ -9,11 +9,18 @@ export interface ControlHookResult {
   loading: boolean;
 }
 
-export function useTicketControl(hex: string, trustFipsKey = false): ControlHookResult {
+export function useTicketControl(
+  hex: string,
+  trustFipsKey = false,
+  expectedNetworkIds: string[] = [],
+): ControlHookResult {
   const [result, setResult] = useState<ControlResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Stable serialisation so the effect only re-runs when the actual values change
+  const networkIdsKey = expectedNetworkIds.slice().sort().join(',');
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -31,8 +38,10 @@ export function useTicketControl(hex: string, trustFipsKey = false): ControlHook
     debounceRef.current = setTimeout(async () => {
       try {
         const keyProvider = await createKeyProvider(trustFipsKey);
+        const ids = networkIdsKey ? networkIdsKey.split(',') : [];
         const controlResult = await controlTicket(clean, {
           level1KeyProvider: keyProvider,
+          ...(ids.length > 0 && { expectedIntercodeNetworkIds: new Set(ids) }),
         });
         setResult(controlResult);
         setError(null);
@@ -45,7 +54,7 @@ export function useTicketControl(hex: string, trustFipsKey = false): ControlHook
     }, 200);
 
     return () => clearTimeout(debounceRef.current);
-  }, [hex, trustFipsKey]);
+  }, [hex, trustFipsKey, networkIdsKey]);
 
   return { result, error, loading };
 }
