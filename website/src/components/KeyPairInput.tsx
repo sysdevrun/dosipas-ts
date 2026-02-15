@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { generateKeyPair, getPublicKey, bytesToHex, CURVES } from '../lib/signing';
+import { generateKeyPair, getPublicKey, bytesToHex, CURVES, type CurveName } from '../lib/signing';
 
 interface Props {
   label: string;
@@ -81,7 +81,7 @@ export default function KeyPairInput({
           </button>
         )}
         <span className="text-xs text-gray-400 ml-auto">
-          Key: {CURVES[curve]?.keyAlgOid} / Sig: {CURVES[curve]?.sigAlgOid}
+          Key: {CURVES[curve as CurveName]?.keyAlgOid} / Sig: {CURVES[curve as CurveName]?.sigAlgOid}
         </span>
       </div>
 
