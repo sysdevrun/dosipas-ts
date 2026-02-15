@@ -2,8 +2,9 @@
  * Decoder for UIC barcode tickets with Intercode 6 extensions.
  *
  * Decodes a hex-encoded (or binary) UIC barcode payload into a typed
- * {@link UicBarcodeTicket} object. Handles header version detection,
- * FCB rail ticket data dispatch, and Intercode 6 extension decoding.
+ * {@link UicBarcodeTicket} object that follows the UicBarcodeHeader ASN.1
+ * schema hierarchy. FCB rail ticket data and Level 2 dynamic content are
+ * decoded inline on `dataSequence[i].decoded` and `level2Data.decoded`.
  */
 import {
   SchemaCodec,
@@ -15,16 +16,17 @@ import type { Codec } from 'asn1-per-ts';
 import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
 import type {
   UicBarcodeTicket,
-  RailTicketData,
+  UicRailTicketData,
   IssuingDetail,
   TravelerDetail,
-  TransportDocumentEntry,
   ControlDetail,
   IntercodeIssuingData,
   IntercodeDynamicData,
   UicDynamicContentData,
-  DataBlock,
-  SecurityInfo,
+  Level2SignedData,
+  Level1Data,
+  DataSequenceEntry,
+  Level2Data,
   ExtensionData,
 } from './types';
 
@@ -87,8 +89,8 @@ function getFdc1Codec(): SchemaCodec {
 
 /**
  * Match Intercode Part 6 issuing extension IDs:
- *   - `_<RICS>II1`   — numeric RICS code prefix (e.g. `_3703II1`)
- *   - `+<CC>II1`     — ISO 3166-1 alpha-2 country code prefix (e.g. `+FRII1`)
+ *   - `_<RICS>II1`   -- numeric RICS code prefix (e.g. `_3703II1`)
+ *   - `+<CC>II1`     -- ISO 3166-1 alpha-2 country code prefix (e.g. `+FRII1`)
  */
 function isIntercodeIssuingExtension(extensionId: string): boolean {
   return /^[_+](\d+|[A-Z]{2})II1$/.test(extensionId);
@@ -96,7 +98,7 @@ function isIntercodeIssuingExtension(extensionId: string): boolean {
 
 /**
  * Match Intercode Part 6 dynamic data formats:
- *   - `_<RICS>.ID1`  — numeric RICS code prefix (e.g. `_3703.ID1`)
+ *   - `_<RICS>.ID1`  -- numeric RICS code prefix (e.g. `_3703.ID1`)
  */
 function isIntercodeDynamicData(dataFormat: string): boolean {
   return /^_\d+\.ID1$/.test(dataFormat);
@@ -104,7 +106,7 @@ function isIntercodeDynamicData(dataFormat: string): boolean {
 
 /**
  * Match FCB Dynamic Content v1 format:
- *   - `FDC1`  — UicDynamicContentData (UIC barcode spec)
+ *   - `FDC1`  -- UicDynamicContentData (UIC barcode spec)
  */
 function isFdc1(dataFormat: string): boolean {
   return dataFormat === 'FDC1';
@@ -130,7 +132,7 @@ function hexToBytes(hex: string): Uint8Array {
  * Decode a UIC barcode ticket from a hex string.
  *
  * @param hex - The hex-encoded barcode payload (whitespace and trailing 'h' are stripped).
- * @returns A fully typed {@link UicBarcodeTicket} object.
+ * @returns A fully typed {@link UicBarcodeTicket} object matching the UicBarcodeHeader schema.
  */
 export function decodeTicket(hex: string): UicBarcodeTicket {
   const bytes = hexToBytes(hex);
@@ -141,7 +143,7 @@ export function decodeTicket(hex: string): UicBarcodeTicket {
  * Decode a UIC barcode ticket from raw bytes.
  *
  * @param bytes - The binary barcode payload.
- * @returns A fully typed {@link UicBarcodeTicket} object.
+ * @returns A fully typed {@link UicBarcodeTicket} object matching the UicBarcodeHeader schema.
  */
 export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
   // Step 1: Peek the header format using low-level BitBuffer
@@ -161,28 +163,13 @@ export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
   const l2 = header.level2SignedData;
   const l1 = l2.level1Data;
 
-  // Step 3: Extract security info
-  const security: SecurityInfo = {
-    securityProviderNum: l1.securityProviderNum,
-    securityProviderIA5: l1.securityProviderIA5,
-    keyId: l1.keyId,
-    level1KeyAlg: l1.level1KeyAlg,
-    level2KeyAlg: l1.level2KeyAlg,
-    level1SigningAlg: l1.level1SigningAlg,
-    level2SigningAlg: l1.level2SigningAlg,
-    level2PublicKey: l1.level2PublicKey,
-    level1Signature: l2.level1Signature,
-    endOfValidityYear: l1.endOfValidityYear,
-    endOfValidityDay: l1.endOfValidityDay,
-    endOfValidityTime: l1.endOfValidityTime,
-    validityDuration: l1.validityDuration,
-  };
-
-  // Step 4: Decode data blocks
-  const railTickets: RailTicketData[] = [];
-  const otherDataBlocks: DataBlock[] = [];
-
+  // Step 3: Build dataSequence with decoded FCB data
+  const dataSequence: DataSequenceEntry[] = [];
   for (const block of l1.dataSequence) {
+    const entry: DataSequenceEntry = {
+      dataFormat: block.dataFormat,
+      data: block.data,
+    };
     const fcbMatch = block.dataFormat.match(/^FCB(\d+)$/);
     if (fcbMatch) {
       const fcbVersion = parseInt(fcbMatch[1], 10);
@@ -190,48 +177,64 @@ export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
         const codecs = getTicketCodecs(fcbVersion);
         const buf = BitBuffer.from(block.data);
         const raw = codecs.UicRailTicketData.decode(buf) as Record<string, unknown>;
-        railTickets.push(decodeRailTicket(fcbVersion, raw));
+        entry.decoded = decodeRailTicket(raw);
       } catch {
-        // If FCB decoding fails, add as raw block
-        otherDataBlocks.push({ dataFormat: block.dataFormat, data: block.data });
+        // If FCB decoding fails, leave decoded undefined
       }
-    } else {
-      otherDataBlocks.push({ dataFormat: block.dataFormat, data: block.data });
     }
+    dataSequence.push(entry);
   }
 
-  // Step 5: Decode Level 2 dynamic data
-  let dynamicData: IntercodeDynamicData | undefined;
-  let dynamicContentData: UicDynamicContentData | undefined;
-  let level2DataBlock: DataBlock | undefined;
+  // Step 4: Build level1Data
+  const level1Data: Level1Data = {
+    securityProviderNum: l1.securityProviderNum,
+    securityProviderIA5: l1.securityProviderIA5,
+    keyId: l1.keyId,
+    dataSequence,
+    level1KeyAlg: l1.level1KeyAlg,
+    level2KeyAlg: l1.level2KeyAlg,
+    level1SigningAlg: l1.level1SigningAlg,
+    level2SigningAlg: l1.level2SigningAlg,
+    level2PublicKey: l1.level2PublicKey,
+    endOfValidityYear: l1.endOfValidityYear,
+    endOfValidityDay: l1.endOfValidityDay,
+    endOfValidityTime: l1.endOfValidityTime,
+    validityDuration: l1.validityDuration,
+  };
 
+  // Step 5: Build level2Data with decoded dynamic content
+  let level2Data: Level2Data | undefined;
   if (l2.level2Data) {
-    level2DataBlock = { dataFormat: l2.level2Data.dataFormat, data: l2.level2Data.data };
+    level2Data = {
+      dataFormat: l2.level2Data.dataFormat,
+      data: l2.level2Data.data,
+    };
     if (isFdc1(l2.level2Data.dataFormat)) {
       try {
-        dynamicContentData = getFdc1Codec().decode(l2.level2Data.data) as UicDynamicContentData;
+        level2Data.decoded = getFdc1Codec().decode(l2.level2Data.data) as UicDynamicContentData;
       } catch {
-        // leave as undefined if decoding fails
+        // leave decoded undefined if decoding fails
       }
     } else if (isIntercodeDynamicData(l2.level2Data.dataFormat)) {
       try {
-        dynamicData = getIntercodeDynamicCodec().decode(l2.level2Data.data) as IntercodeDynamicData;
+        level2Data.decoded = getIntercodeDynamicCodec().decode(l2.level2Data.data) as IntercodeDynamicData;
       } catch {
-        // leave as undefined if decoding fails
+        // leave decoded undefined if decoding fails
       }
     }
   }
 
+  // Step 6: Build level2SignedData
+  const level2SignedData: Level2SignedData = {
+    level1Data,
+    level1Signature: l2.level1Signature,
+    level2Data,
+  };
+
   return {
     format,
-    headerVersion,
+    level2SignedData,
     level2Signature: header.level2Signature,
-    security,
-    railTickets,
-    otherDataBlocks,
-    dynamicData,
-    dynamicContentData,
-    level2DataBlock,
   };
 }
 
@@ -239,21 +242,22 @@ export function decodeTicketFromBytes(bytes: Uint8Array): UicBarcodeTicket {
 // Rail ticket decoding helpers
 // ---------------------------------------------------------------------------
 
-function decodeRailTicket(fcbVersion: number, raw: Record<string, unknown>): RailTicketData {
+function decodeRailTicket(raw: Record<string, unknown>): UicRailTicketData {
   const issuingDetail = raw.issuingDetail ? decodeIssuingDetail(raw.issuingDetail as any) : undefined;
   const travelerDetail = raw.travelerDetail ? decodeTravelerDetail(raw.travelerDetail as any) : undefined;
   const transportDocument = raw.transportDocument
-    ? decodeTransportDocuments(raw.transportDocument as any[])
+    ? (raw.transportDocument as any[]).map((doc: any) => ({
+        token: doc.token,
+        ticket: doc.ticket,
+      }))
     : undefined;
   const controlDetail = raw.controlDetail ? raw.controlDetail as ControlDetail : undefined;
 
   return {
-    fcbVersion,
     issuingDetail,
     travelerDetail,
     transportDocument,
     controlDetail,
-    raw,
   };
 }
 
@@ -281,16 +285,18 @@ function decodeIssuingDetail(iss: any): IssuingDetail {
 
   if (iss.extension) {
     const ext = iss.extension;
+    // Always preserve the raw extension data (matches schema)
+    result.extension = { extensionId: ext.extensionId, extensionData: ext.extensionData };
+
+    // Additionally decode Intercode extension if recognized
     if (isIntercodeIssuingExtension(ext.extensionId)) {
       try {
         const decoded = getIntercodeIssuingCodec().decode(ext.extensionData) as IntercodeIssuingData;
         decoded.extensionId = ext.extensionId;
         result.intercodeIssuing = decoded;
       } catch {
-        result.extension = { extensionId: ext.extensionId, extensionData: ext.extensionData };
+        // leave intercodeIssuing undefined if decoding fails
       }
-    } else {
-      result.extension = { extensionId: ext.extensionId, extensionData: ext.extensionData };
     }
   }
 
@@ -303,29 +309,4 @@ function decodeTravelerDetail(td: any): TravelerDetail {
     preferredLanguage: td.preferredLanguage,
     groupName: td.groupName,
   };
-}
-
-function decodeTransportDocuments(docs: any[]): TransportDocumentEntry[] {
-  return docs.map((doc) => {
-    const ticket = doc.ticket || {};
-    const entries = Object.entries(ticket);
-    if (entries.length === 2 && entries[0][0] === 'key' && entries[1][0] === 'value') {
-      // CHOICE decoded as { key: "variantName", value: {...} }
-      return {
-        ticketType: entries[0][1] as string,
-        ticket: entries[1][1] as Record<string, unknown>,
-      };
-    }
-    // Single-key CHOICE
-    if (entries.length === 1) {
-      return {
-        ticketType: entries[0][0],
-        ticket: entries[0][1] as Record<string, unknown>,
-      };
-    }
-    return {
-      ticketType: 'unknown',
-      ticket,
-    };
-  });
 }

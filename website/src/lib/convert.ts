@@ -3,6 +3,7 @@ import type {
   UicBarcodeTicketInput,
   IssuingDetailInput,
   IntercodeIssuingDataInput,
+  IntercodeDynamicData,
   IntercodeDynamicDataInput,
   UicDynamicContentDataInput,
   TravelerDetailInput,
@@ -17,11 +18,14 @@ import type {
  * the Encode tab can pre-populate its signature fields for editing.
  */
 export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
-  const rt = ticket.railTickets[0];
-  if (!rt) {
-    throw new Error('No rail ticket data to convert');
+  const l1 = ticket.level2SignedData.level1Data;
+  const ds = l1.dataSequence[0];
+  if (!ds?.decoded) {
+    throw new Error('No decoded rail ticket data to convert');
   }
-
+  const rt = ds.decoded;
+  const fcbMatch = ds.dataFormat.match(/^FCB(\d+)$/);
+  const fcbVersion = fcbMatch ? parseInt(fcbMatch[1], 10) : 2;
   const iss = rt.issuingDetail;
 
   const issuingDetail: IssuingDetailInput = {
@@ -62,12 +66,12 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
     };
   }
 
-  // Convert transport documents
+  // Convert transport documents (CHOICE {key, value} -> {ticketType, ticket})
   let transportDocument: TransportDocumentInput[] | undefined;
   if (rt.transportDocument && rt.transportDocument.length > 0) {
     transportDocument = rt.transportDocument.map((doc) => ({
-      ticketType: doc.ticketType,
-      ticket: { ...doc.ticket },
+      ticketType: doc.ticket.key,
+      ticket: { ...doc.ticket.value },
     }));
   }
 
@@ -79,33 +83,39 @@ export function ticketToInput(ticket: UicBarcodeTicket): UicBarcodeTicketInput {
   // Convert dynamic data (FDC1 or Intercode)
   let dynamicData: IntercodeDynamicDataInput | undefined;
   let dynamicContentData: UicDynamicContentDataInput | undefined;
-  if (ticket.dynamicContentData) {
-    dynamicContentData = { ...ticket.dynamicContentData };
-  } else if (ticket.dynamicData) {
-    dynamicData = {
-      rics: ticket.security.securityProviderNum ?? 0,
-      dynamicContentDay: ticket.dynamicData.dynamicContentDay,
-      dynamicContentTime: ticket.dynamicData.dynamicContentTime,
-      dynamicContentUTCOffset: ticket.dynamicData.dynamicContentUTCOffset,
-      dynamicContentDuration: ticket.dynamicData.dynamicContentDuration,
-    };
+  const l2Data = ticket.level2SignedData.level2Data;
+  if (l2Data?.decoded) {
+    if (l2Data.dataFormat === 'FDC1') {
+      dynamicContentData = { ...(l2Data.decoded as UicDynamicContentDataInput) };
+    } else {
+      const ricsMatch = l2Data.dataFormat.match(/^_(\d+)\.ID1$/);
+      const rics = ricsMatch ? parseInt(ricsMatch[1], 10) : l1.securityProviderNum ?? 0;
+      const dynamic = l2Data.decoded as IntercodeDynamicData;
+      dynamicData = {
+        rics,
+        dynamicContentDay: dynamic.dynamicContentDay,
+        dynamicContentTime: dynamic.dynamicContentTime,
+        dynamicContentUTCOffset: dynamic.dynamicContentUTCOffset,
+        dynamicContentDuration: dynamic.dynamicContentDuration,
+      };
+    }
   }
 
   const result: UicBarcodeTicketInput = {
-    headerVersion: ticket.headerVersion,
-    fcbVersion: rt.fcbVersion,
-    securityProviderNum: ticket.security.securityProviderNum,
-    keyId: ticket.security.keyId,
-    endOfValidityYear: ticket.security.endOfValidityYear,
-    endOfValidityDay: ticket.security.endOfValidityDay,
-    endOfValidityTime: ticket.security.endOfValidityTime,
-    validityDuration: ticket.security.validityDuration,
-    level1KeyAlg: ticket.security.level1KeyAlg,
-    level1SigningAlg: ticket.security.level1SigningAlg,
-    level1Signature: ticket.security.level1Signature,
-    level2KeyAlg: ticket.security.level2KeyAlg,
-    level2SigningAlg: ticket.security.level2SigningAlg,
-    level2PublicKey: ticket.security.level2PublicKey,
+    headerVersion: parseInt(ticket.format.replace('U', ''), 10),
+    fcbVersion,
+    securityProviderNum: l1.securityProviderNum,
+    keyId: l1.keyId,
+    endOfValidityYear: l1.endOfValidityYear,
+    endOfValidityDay: l1.endOfValidityDay,
+    endOfValidityTime: l1.endOfValidityTime,
+    validityDuration: l1.validityDuration,
+    level1KeyAlg: l1.level1KeyAlg,
+    level1SigningAlg: l1.level1SigningAlg,
+    level1Signature: ticket.level2SignedData.level1Signature,
+    level2KeyAlg: l1.level2KeyAlg,
+    level2SigningAlg: l1.level2SigningAlg,
+    level2PublicKey: l1.level2PublicKey,
     level2Signature: ticket.level2Signature,
     railTicket: {
       issuingDetail,

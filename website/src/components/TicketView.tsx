@@ -1,4 +1,4 @@
-import type { UicBarcodeTicket, SecurityInfo, RailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, UicDynamicContentData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentEntry, ControlDetail } from 'dosipas-ts';
+import type { UicBarcodeTicket, Level1Data, UicRailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, UicDynamicContentData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentData, ControlDetail, DataSequenceEntry, Level2Data } from 'dosipas-ts';
 import JsonTree from './JsonTree';
 
 interface Props {
@@ -51,9 +51,10 @@ const OID_NAMES: Record<string, string> = {
   '1.2.840.113549.1.1.11': 'RSA SHA-256',
 };
 
-function oidName(oid?: string): string | undefined {
+function oidDisplay(oid?: string): string | undefined {
   if (!oid) return undefined;
-  return OID_NAMES[oid] ?? oid;
+  const name = OID_NAMES[oid];
+  return name ? `${oid} (${name})` : oid;
 }
 
 /** Signature-payload region wrapper with colored left border and label. */
@@ -101,61 +102,62 @@ function EmbeddedBlock({
   );
 }
 
-function SecurityMetadataSection({ security }: { security: SecurityInfo }) {
+function Level1DataSection({ l1 }: { l1: Level1Data }) {
   return (
-    <Section title="Security Metadata">
-      <Field label="Provider" value={security.securityProviderNum} />
-      <Field label="Provider (IA5)" value={security.securityProviderIA5} />
-      <Field label="Key ID" value={security.keyId} />
-      <Field label="L1 Key Alg" value={oidName(security.level1KeyAlg)} />
-      <Field label="L2 Key Alg" value={oidName(security.level2KeyAlg)} />
-      <Field label="L1 Signing Alg" value={oidName(security.level1SigningAlg)} />
-      <Field label="L2 Signing Alg" value={oidName(security.level2SigningAlg)} />
-      <BytesField label="L2 Public Key" value={security.level2PublicKey} />
-      <Field label="End of Validity Year" value={security.endOfValidityYear} />
-      <Field label="End of Validity Day" value={security.endOfValidityDay} />
-      <Field label="End of Validity Time" value={security.endOfValidityTime} />
-      <Field label="Validity Duration" value={security.validityDuration} />
+    <Section title="level1Data">
+      <Field label="securityProviderNum" value={l1.securityProviderNum} />
+      <Field label="securityProviderIA5" value={l1.securityProviderIA5} />
+      <Field label="keyId" value={l1.keyId} />
+      <Field label="level1KeyAlg" value={oidDisplay(l1.level1KeyAlg)} />
+      <Field label="level2KeyAlg" value={oidDisplay(l1.level2KeyAlg)} />
+      <Field label="level1SigningAlg" value={oidDisplay(l1.level1SigningAlg)} />
+      <Field label="level2SigningAlg" value={oidDisplay(l1.level2SigningAlg)} />
+      <BytesField label="level2PublicKey" value={l1.level2PublicKey} />
+      <Field label="endOfValidityYear" value={l1.endOfValidityYear} />
+      <Field label="endOfValidityDay" value={l1.endOfValidityDay} />
+      <Field label="endOfValidityTime" value={l1.endOfValidityTime} />
+      <Field label="validityDuration" value={l1.validityDuration} />
     </Section>
   );
 }
 
 function IssuingSection({ detail }: { detail: IssuingDetail }) {
   return (
-    <Section title="Issuing Detail">
-      <Field label="Provider" value={detail.securityProviderNum} />
-      <Field label="Issuer" value={detail.issuerNum} />
-      <Field label="Issuer (IA5)" value={detail.issuerIA5} />
-      <Field label="Issuer Name" value={detail.issuerName} />
-      <Field label="Year" value={detail.issuingYear} />
-      <Field label="Day" value={detail.issuingDay} />
-      <Field label="Time" value={detail.issuingTime} />
-      <Field label="Specimen" value={detail.specimen} />
-      <Field label="Secure Paper" value={detail.securePaperTicket} />
-      <Field label="Activated" value={detail.activated} />
-      <Field label="Currency" value={detail.currency} />
-      <Field label="Currency Fract" value={detail.currencyFract} />
-      <Field label="PNR" value={detail.issuerPNR} />
-      <Field label="Issued on Train (num)" value={detail.issuedOnTrainNum} />
-      <Field label="Issued on Train (IA5)" value={detail.issuedOnTrainIA5} />
-      <Field label="Issued on Line" value={detail.issuedOnLine} />
+    <Section title="issuingDetail">
+      <Field label="securityProviderNum" value={detail.securityProviderNum} />
+      <Field label="securityProviderIA5" value={detail.securityProviderIA5} />
+      <Field label="issuerNum" value={detail.issuerNum} />
+      <Field label="issuerIA5" value={detail.issuerIA5} />
+      <Field label="issuerName" value={detail.issuerName} />
+      <Field label="issuingYear" value={detail.issuingYear} />
+      <Field label="issuingDay" value={detail.issuingDay} />
+      <Field label="issuingTime" value={detail.issuingTime} />
+      <Field label="specimen" value={detail.specimen} />
+      <Field label="securePaperTicket" value={detail.securePaperTicket} />
+      <Field label="activated" value={detail.activated} />
+      <Field label="currency" value={detail.currency} />
+      <Field label="currencyFract" value={detail.currencyFract} />
+      <Field label="issuerPNR" value={detail.issuerPNR} />
+      <Field label="issuedOnTrainNum" value={detail.issuedOnTrainNum} />
+      <Field label="issuedOnTrainIA5" value={detail.issuedOnTrainIA5} />
+      <Field label="issuedOnLine" value={detail.issuedOnLine} />
       {detail.pointOfSale && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Point of Sale</span>
-          <Field label="Geo Unit" value={detail.pointOfSale.geoUnit} />
-          <Field label="Coordinate System" value={detail.pointOfSale.coordinateSystem} />
-          <Field label="Hemisphere Lon" value={detail.pointOfSale.hemisphereLongitude} />
-          <Field label="Hemisphere Lat" value={detail.pointOfSale.hemisphereLatitude} />
-          <Field label="Longitude" value={detail.pointOfSale.longitude} />
-          <Field label="Latitude" value={detail.pointOfSale.latitude} />
-          <Field label="Accuracy" value={detail.pointOfSale.accuracy} />
+          <span className="text-xs text-gray-400">pointOfSale</span>
+          <Field label="geoUnit" value={detail.pointOfSale.geoUnit} />
+          <Field label="coordinateSystem" value={detail.pointOfSale.coordinateSystem} />
+          <Field label="hemisphereLongitude" value={detail.pointOfSale.hemisphereLongitude} />
+          <Field label="hemisphereLatitude" value={detail.pointOfSale.hemisphereLatitude} />
+          <Field label="longitude" value={detail.pointOfSale.longitude} />
+          <Field label="latitude" value={detail.pointOfSale.latitude} />
+          <Field label="accuracy" value={detail.pointOfSale.accuracy} />
         </div>
       )}
       {detail.extension && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Extension</span>
-          <Field label="Extension ID" value={detail.extension.extensionId} />
-          <BytesField label="Extension Data" value={detail.extension.extensionData} />
+          <span className="text-xs text-gray-400">extension</span>
+          <Field label="extensionId" value={detail.extension.extensionId} />
+          <BytesField label="extensionData" value={detail.extension.extensionData} />
         </div>
       )}
       {detail.intercodeIssuing && <IntercodeIssuingSection data={detail.intercodeIssuing} />}
@@ -167,19 +169,19 @@ function IntercodeIssuingSection({ data }: { data: IntercodeIssuingData }) {
   return (
     <div className="mt-2 pt-2 border-t border-gray-100">
       <h4 className="text-xs font-medium text-gray-400 mb-1">
-        Intercode 6 Issuing
+        intercodeIssuing
         <span className="font-mono ml-1 text-gray-500">{data.extensionId}</span>
       </h4>
-      <Field label="Version" value={data.intercodeVersion} />
-      <Field label="Instanciation" value={data.intercodeInstanciation} />
-      <BytesField label="Network ID" value={data.networkId} />
+      <Field label="intercodeVersion" value={data.intercodeVersion} />
+      <Field label="intercodeInstanciation" value={data.intercodeInstanciation} />
+      <BytesField label="networkId" value={data.networkId} />
       {data.productRetailer && (
         <>
-          <Field label="Retail Channel" value={data.productRetailer.retailChannel} />
-          <Field label="Retailer ID" value={data.productRetailer.retailerId} />
-          <Field label="Retail Point" value={data.productRetailer.retailPointId} />
-          <Field label="Server ID" value={data.productRetailer.retailServerId} />
-          <Field label="Generator ID" value={data.productRetailer.retailGeneratorId} />
+          <Field label="retailChannel" value={data.productRetailer.retailChannel} />
+          <Field label="retailerId" value={data.productRetailer.retailerId} />
+          <Field label="retailPointId" value={data.productRetailer.retailPointId} />
+          <Field label="retailServerId" value={data.productRetailer.retailServerId} />
+          <Field label="retailGeneratorId" value={data.productRetailer.retailGeneratorId} />
         </>
       )}
     </div>
@@ -206,7 +208,7 @@ function CustomerStatusSection({ statuses }: { statuses?: CustomerStatus[] }) {
   if (!statuses || statuses.length === 0) {
     return (
       <div className="flex gap-2 py-0.5">
-        <span className="text-gray-500 min-w-32 shrink-0">Status</span>
+        <span className="text-gray-500 min-w-32 shrink-0">status</span>
         <span className="text-gray-300 italic text-xs">not set</span>
       </div>
     );
@@ -215,11 +217,11 @@ function CustomerStatusSection({ statuses }: { statuses?: CustomerStatus[] }) {
     <>
       {statuses.map((s, i) => (
         <div key={i} className="ml-2 mt-1 pt-1 border-t border-gray-50">
-          <span className="text-xs text-gray-400">Status {i + 1}</span>
-          <FullField label="Provider (num)" value={s.statusProviderNum} />
-          <FullField label="Provider (IA5)" value={s.statusProviderIA5} />
-          <FullField label="Customer Status" value={s.customerStatus} />
-          <FullField label="Status Descr." value={s.customerStatusDescr} />
+          <span className="text-xs text-gray-400">status[{i}]</span>
+          <FullField label="statusProviderNum" value={s.statusProviderNum} />
+          <FullField label="statusProviderIA5" value={s.statusProviderIA5} />
+          <FullField label="customerStatus" value={s.customerStatus} />
+          <FullField label="customerStatusDescr" value={s.customerStatusDescr} />
         </div>
       ))}
     </>
@@ -228,32 +230,32 @@ function CustomerStatusSection({ statuses }: { statuses?: CustomerStatus[] }) {
 
 function TravelerSection({ detail }: { detail: TravelerDetail }) {
   return (
-    <Section title="Traveler Detail">
-      <FullField label="Language" value={detail.preferredLanguage} />
-      <FullField label="Group Name" value={detail.groupName} />
+    <Section title="travelerDetail">
+      <FullField label="preferredLanguage" value={detail.preferredLanguage} />
+      <FullField label="groupName" value={detail.groupName} />
       {detail.traveler?.map((t, i) => (
         <div key={i} className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Traveler {i + 1}</span>
-          <FullField label="First Name" value={t.firstName} />
-          <FullField label="Second Name" value={t.secondName} />
-          <FullField label="Last Name" value={t.lastName} />
-          <FullField label="Title" value={t.title} />
-          <FullField label="Gender" value={t.gender} />
-          <FullField label="Date of Birth" value={t.dateOfBirth} />
-          <FullField label="Year of Birth" value={t.yearOfBirth} />
-          <FullField label="Month of Birth" value={t.monthOfBirth} />
-          <FullField label="Day of Birth (v1)" value={t.dayOfBirth} />
-          <FullField label="Day of Birth in Month (v2/v3)" value={t.dayOfBirthInMonth} />
-          <FullField label="ID Card" value={t.idCard} />
-          <FullField label="Passport ID" value={t.passportId} />
-          <FullField label="Customer ID (IA5)" value={t.customerIdIA5} />
-          <FullField label="Customer ID (num)" value={t.customerIdNum} />
-          <FullField label="Ticket Holder" value={t.ticketHolder} />
-          <FullField label="Passenger Type" value={t.passengerType} />
-          <FullField label="Reduced Mobility" value={t.passengerWithReducedMobility} />
-          <FullField label="Country of Residence" value={t.countryOfResidence} />
-          <FullField label="Country of Passport" value={t.countryOfPassport} />
-          <FullField label="Country of ID Card" value={t.countryOfIdCard} />
+          <span className="text-xs text-gray-400">traveler[{i}]</span>
+          <FullField label="firstName" value={t.firstName} />
+          <FullField label="secondName" value={t.secondName} />
+          <FullField label="lastName" value={t.lastName} />
+          <FullField label="title" value={t.title} />
+          <FullField label="gender" value={t.gender} />
+          <FullField label="dateOfBirth" value={t.dateOfBirth} />
+          <FullField label="yearOfBirth" value={t.yearOfBirth} />
+          <FullField label="monthOfBirth" value={t.monthOfBirth} />
+          <FullField label="dayOfBirth" value={t.dayOfBirth} />
+          <FullField label="dayOfBirthInMonth" value={t.dayOfBirthInMonth} />
+          <FullField label="idCard" value={t.idCard} />
+          <FullField label="passportId" value={t.passportId} />
+          <FullField label="customerIdIA5" value={t.customerIdIA5} />
+          <FullField label="customerIdNum" value={t.customerIdNum} />
+          <FullField label="ticketHolder" value={t.ticketHolder} />
+          <FullField label="passengerType" value={t.passengerType} />
+          <FullField label="passengerWithReducedMobility" value={t.passengerWithReducedMobility} />
+          <FullField label="countryOfResidence" value={t.countryOfResidence} />
+          <FullField label="countryOfPassport" value={t.countryOfPassport} />
+          <FullField label="countryOfIdCard" value={t.countryOfIdCard} />
           <CustomerStatusSection statuses={t.status} />
         </div>
       ))}
@@ -261,14 +263,14 @@ function TravelerSection({ detail }: { detail: TravelerDetail }) {
   );
 }
 
-function TransportDocSection({ docs }: { docs: TransportDocumentEntry[] }) {
+function TransportDocSection({ docs }: { docs: TransportDocumentData[] }) {
   return (
-    <Section title="Transport Documents">
+    <Section title="transportDocument">
       {docs.map((doc, i) => (
         <div key={i} className={i > 0 ? 'mt-2 pt-2 border-t border-gray-100' : ''}>
-          <Field label="Type" value={doc.ticketType} />
+          <Field label="ticket (CHOICE)" value={doc.ticket.key} />
           <div className="mt-1">
-            <JsonTree data={doc.ticket} label="data" />
+            <JsonTree data={doc.ticket.value} label={doc.ticket.key} />
           </div>
         </div>
       ))}
@@ -278,153 +280,171 @@ function TransportDocSection({ docs }: { docs: TransportDocumentEntry[] }) {
 
 function ControlSection({ detail }: { detail: ControlDetail }) {
   return (
-    <Section title="Control Detail">
-      <Field label="ID by Card" value={detail.identificationByCardReference ? 'Yes' : undefined} />
-      <Field label="ID by ID Card" value={detail.identificationByIdCard} />
-      <Field label="ID by Passport" value={detail.identificationByPassportId} />
-      <Field label="Identification Item" value={detail.identificationItem} />
-      <Field label="Passport Validation" value={detail.passportValidationRequired} />
-      <Field label="Online Validation" value={detail.onlineValidationRequired} />
-      <Field label="Random Detailed Validation" value={detail.randomDetailedValidationRequired} />
-      <Field label="Age Check" value={detail.ageCheckRequired} />
-      <Field label="Reduction Card Check" value={detail.reductionCardCheckRequired} />
-      <Field label="Info Text" value={detail.infoText} />
+    <Section title="controlDetail">
+      <Field label="identificationByCardReference" value={detail.identificationByCardReference ? 'present' : undefined} />
+      <Field label="identificationByIdCard" value={detail.identificationByIdCard} />
+      <Field label="identificationByPassportId" value={detail.identificationByPassportId} />
+      <Field label="identificationItem" value={detail.identificationItem} />
+      <Field label="passportValidationRequired" value={detail.passportValidationRequired} />
+      <Field label="onlineValidationRequired" value={detail.onlineValidationRequired} />
+      <Field label="randomDetailedValidationRequired" value={detail.randomDetailedValidationRequired} />
+      <Field label="ageCheckRequired" value={detail.ageCheckRequired} />
+      <Field label="reductionCardCheckRequired" value={detail.reductionCardCheckRequired} />
+      <Field label="infoText" value={detail.infoText} />
       {detail.identificationByCardReference && (
-        <JsonTree data={detail.identificationByCardReference} label="cardReferences" />
+        <JsonTree data={detail.identificationByCardReference} label="identificationByCardReference" />
       )}
       {detail.includedTickets && (
         <JsonTree data={detail.includedTickets} label="includedTickets" />
       )}
       {detail.extension && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Extension</span>
-          <Field label="Extension ID" value={detail.extension.extensionId} />
-          <BytesField label="Extension Data" value={detail.extension.extensionData} />
+          <span className="text-xs text-gray-400">extension</span>
+          <Field label="extensionId" value={detail.extension.extensionId} />
+          <BytesField label="extensionData" value={detail.extension.extensionData} />
         </div>
       )}
     </Section>
   );
 }
 
-function DynamicDataSection({ data, dataFormat }: { data: IntercodeDynamicData; dataFormat?: string }) {
+function IntercodeDynamicSection({ data, dataFormat }: { data: IntercodeDynamicData; dataFormat: string }) {
   return (
-    <Section title="Level 2 Data — Intercode 6 Dynamic">
-      <Field label="Data Format" value={dataFormat} />
-      <Field label="Day" value={data.dynamicContentDay} />
-      <Field label="Time" value={data.dynamicContentTime} />
-      <Field label="UTC Offset" value={data.dynamicContentUTCOffset} />
-      <Field label="Duration" value={data.dynamicContentDuration} />
+    <Section title="level2Data (IntercodeDynamicData)">
+      <Field label="dataFormat" value={dataFormat} />
+      <Field label="dynamicContentDay" value={data.dynamicContentDay} />
+      <Field label="dynamicContentTime" value={data.dynamicContentTime} />
+      <Field label="dynamicContentUTCOffset" value={data.dynamicContentUTCOffset} />
+      <Field label="dynamicContentDuration" value={data.dynamicContentDuration} />
     </Section>
   );
 }
 
-function DynamicContentDataSection({ data }: { data: UicDynamicContentData }) {
+function DynamicContentDataSection({ data, dataFormat }: { data: UicDynamicContentData; dataFormat: string }) {
   return (
-    <Section title="Level 2 Data — FDC1 Dynamic Content">
-      <Field label="Mobile App ID" value={data.dynamicContentMobileAppId} />
+    <Section title="level2Data (UicDynamicContentData)">
+      <Field label="dataFormat" value={dataFormat} />
+      <Field label="dynamicContentMobileAppId" value={data.dynamicContentMobileAppId} />
       {data.dynamicContentTimeStamp && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Timestamp (UTC)</span>
-          <Field label="Day" value={data.dynamicContentTimeStamp.day} />
-          <Field label="Time" value={data.dynamicContentTimeStamp.time} />
+          <span className="text-xs text-gray-400">dynamicContentTimeStamp</span>
+          <Field label="day" value={data.dynamicContentTimeStamp.day} />
+          <Field label="time" value={data.dynamicContentTimeStamp.time} />
         </div>
       )}
       {data.dynamicContentGeoCoordinate && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Geo Coordinate</span>
-          <Field label="Geo Unit" value={data.dynamicContentGeoCoordinate.geoUnit} />
-          <Field label="Coordinate System" value={data.dynamicContentGeoCoordinate.coordinateSystem} />
-          <Field label="Hemisphere Lon" value={data.dynamicContentGeoCoordinate.hemisphereLongitude} />
-          <Field label="Hemisphere Lat" value={data.dynamicContentGeoCoordinate.hemisphereLatitude} />
-          <Field label="Longitude" value={data.dynamicContentGeoCoordinate.longitude} />
-          <Field label="Latitude" value={data.dynamicContentGeoCoordinate.latitude} />
-          <Field label="Accuracy" value={data.dynamicContentGeoCoordinate.accuracy} />
+          <span className="text-xs text-gray-400">dynamicContentGeoCoordinate</span>
+          <Field label="geoUnit" value={data.dynamicContentGeoCoordinate.geoUnit} />
+          <Field label="coordinateSystem" value={data.dynamicContentGeoCoordinate.coordinateSystem} />
+          <Field label="hemisphereLongitude" value={data.dynamicContentGeoCoordinate.hemisphereLongitude} />
+          <Field label="hemisphereLatitude" value={data.dynamicContentGeoCoordinate.hemisphereLatitude} />
+          <Field label="longitude" value={data.dynamicContentGeoCoordinate.longitude} />
+          <Field label="latitude" value={data.dynamicContentGeoCoordinate.latitude} />
+          <Field label="accuracy" value={data.dynamicContentGeoCoordinate.accuracy} />
         </div>
       )}
       {data.dynamicContentResponseToChallenge && data.dynamicContentResponseToChallenge.length > 0 && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Challenge Responses</span>
+          <span className="text-xs text-gray-400">dynamicContentResponseToChallenge</span>
           {data.dynamicContentResponseToChallenge.map((ext, i) => (
             <div key={i}>
-              <Field label={`[${i}] ID`} value={ext.extensionId} />
-              <BytesField label={`[${i}] Data`} value={ext.extensionData} />
+              <Field label={`[${i}].extensionId`} value={ext.extensionId} />
+              <BytesField label={`[${i}].extensionData`} value={ext.extensionData} />
             </div>
           ))}
         </div>
       )}
       {data.dynamicContentExtension && (
         <div className="mt-1 pt-1 border-t border-gray-100">
-          <span className="text-xs text-gray-400">Extension</span>
-          <Field label="Extension ID" value={data.dynamicContentExtension.extensionId} />
-          <BytesField label="Extension Data" value={data.dynamicContentExtension.extensionData} />
+          <span className="text-xs text-gray-400">dynamicContentExtension</span>
+          <Field label="extensionId" value={data.dynamicContentExtension.extensionId} />
+          <BytesField label="extensionData" value={data.dynamicContentExtension.extensionData} />
         </div>
       )}
     </Section>
   );
 }
 
+function DecodedFcbSection({ entry, index }: { entry: DataSequenceEntry; index: number }) {
+  const rt = entry.decoded;
+  if (!rt) {
+    return (
+      <EmbeddedBlock label={`dataSequence[${index}] — ${entry.dataFormat}`}>
+        <Section title={entry.dataFormat}>
+          <BytesField label="data" value={entry.data} />
+        </Section>
+      </EmbeddedBlock>
+    );
+  }
+
+  return (
+    <EmbeddedBlock label={`dataSequence[${index}] — ${entry.dataFormat}`}>
+      {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} />}
+      {rt.travelerDetail && <TravelerSection detail={rt.travelerDetail} />}
+      {rt.transportDocument && rt.transportDocument.length > 0 && (
+        <TransportDocSection docs={rt.transportDocument} />
+      )}
+      {rt.controlDetail && <ControlSection detail={rt.controlDetail} />}
+    </EmbeddedBlock>
+  );
+}
+
+function Level2DataSection({ l2Data }: { l2Data: Level2Data }) {
+  if (!l2Data.decoded) {
+    return (
+      <Section title="level2Data">
+        <Field label="dataFormat" value={l2Data.dataFormat} />
+        <BytesField label="data" value={l2Data.data} />
+      </Section>
+    );
+  }
+
+  // FDC1 = UicDynamicContentData
+  if (l2Data.dataFormat === 'FDC1') {
+    return <DynamicContentDataSection data={l2Data.decoded as UicDynamicContentData} dataFormat={l2Data.dataFormat} />;
+  }
+
+  // _RICS.ID1 = IntercodeDynamicData
+  return <IntercodeDynamicSection data={l2Data.decoded as IntercodeDynamicData} dataFormat={l2Data.dataFormat} />;
+}
+
 export default function TicketView({ ticket }: Props) {
+  const l2Signed = ticket.level2SignedData;
+  const l1 = l2Signed.level1Data;
+
   return (
     <div className="space-y-4">
       {/* Header — outside both signature regions */}
-      <Section title="Header">
-        <Field label="Format" value={ticket.format} />
-        <Field label="Header Version" value={ticket.headerVersion} />
+      <Section title="UicBarcodeHeader">
+        <Field label="format" value={ticket.format} />
       </Section>
 
       {/* Level 2 Signature Payload (level2SignedData) */}
-      <SignatureRegion label="Level 2 Signature Payload" color="green">
+      <SignatureRegion label="level2SignedData" color="green">
         {/* Level 1 Signature Payload (level1Data) */}
-        <SignatureRegion label="Level 1 Signature Payload" color="blue">
-          <SecurityMetadataSection security={ticket.security} />
+        <SignatureRegion label="level1Data" color="blue">
+          <Level1DataSection l1={l1} />
 
-          {/* dataSequence — decoded into rail tickets and other data blocks */}
-          {ticket.railTickets.map((rt, i) => (
-            <EmbeddedBlock
-              key={i}
-              label={`dataSequence[${i}] — FCB${rt.fcbVersion}`}
-            >
-              <Section title={`Rail Ticket ${ticket.railTickets.length > 1 ? i + 1 : ''} (FCB${rt.fcbVersion})`}>
-                <Field label="FCB Version" value={rt.fcbVersion} />
-              </Section>
-
-              {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} />}
-              {rt.travelerDetail && <TravelerSection detail={rt.travelerDetail} />}
-              {rt.transportDocument && rt.transportDocument.length > 0 && (
-                <TransportDocSection docs={rt.transportDocument} />
-              )}
-              {rt.controlDetail && <ControlSection detail={rt.controlDetail} />}
-            </EmbeddedBlock>
+          {/* dataSequence — decoded FCB blocks + other data blocks */}
+          {l1.dataSequence.map((entry, i) => (
+            <DecodedFcbSection key={i} entry={entry} index={i} />
           ))}
-
-          {ticket.otherDataBlocks.length > 0 && (
-            <EmbeddedBlock label={`dataSequence — other blocks`}>
-              <Section title="Other Data Blocks">
-                {ticket.otherDataBlocks.map((block, i) => (
-                  <div key={i}>
-                    <Field label="Format" value={block.dataFormat} />
-                    <BytesField label="Data" value={block.data} />
-                  </div>
-                ))}
-              </Section>
-            </EmbeddedBlock>
-          )}
         </SignatureRegion>
 
         {/* level1Signature — inside level2SignedData, outside level1Data */}
-        <Section title="Level 1 Signature">
-          <BytesField label="Signature" value={ticket.security.level1Signature} />
+        <Section title="level1Signature">
+          <BytesField label="level1Signature" value={l2Signed.level1Signature} />
         </Section>
 
         {/* level2Data — inside level2SignedData, outside level1Data */}
-        {ticket.dynamicData && <DynamicDataSection data={ticket.dynamicData} dataFormat={ticket.level2DataBlock?.dataFormat} />}
-        {ticket.dynamicContentData && <DynamicContentDataSection data={ticket.dynamicContentData} />}
+        {l2Signed.level2Data && <Level2DataSection l2Data={l2Signed.level2Data} />}
       </SignatureRegion>
 
       {/* level2Signature — outside level2SignedData */}
       {ticket.level2Signature && (
-        <Section title="Level 2 Signature">
-          <BytesField label="Signature" value={ticket.level2Signature} />
+        <Section title="level2Signature">
+          <BytesField label="level2Signature" value={ticket.level2Signature} />
         </Section>
       )}
     </div>

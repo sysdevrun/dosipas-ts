@@ -1,92 +1,86 @@
 /**
  * TypeScript types for a decoded UIC barcode ticket with Intercode 6 extensions.
  *
- * The top-level type is {@link UicBarcodeTicket} which combines the header envelope,
- * decoded FCB rail ticket data, and Intercode 6 extension data into a single typed object.
+ * The top-level type is {@link UicBarcodeTicket} which follows the exact
+ * `UicBarcodeHeader` ASN.1 schema hierarchy, with decoded sub-structures
+ * available on `dataSequence[i].decoded` and `level2Data.decoded`.
  */
 
 // ---------------------------------------------------------------------------
-// Top-level decoded ticket
+// UicBarcodeHeader — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
-/** Fully decoded UIC barcode ticket with resolved Intercode 6 extensions. */
+/** Decoded UIC barcode ticket. Follows the UicBarcodeHeader ASN.1 schema. */
 export interface UicBarcodeTicket {
   /** Header format string, e.g. "U1" or "U2". */
   format: string;
-  /** Header version number (1 or 2). */
-  headerVersion: number;
+  /** Level 2 signed data (contains level1Data, level1Signature, level2Data). */
+  level2SignedData: Level2SignedData;
   /** Level 2 digital signature bytes, if present. */
   level2Signature?: Uint8Array;
-
-  /** Security / key metadata from Level 1. */
-  security: SecurityInfo;
-
-  /** Decoded FCB rail ticket data blocks. */
-  railTickets: RailTicketData[];
-
-  /** Raw data blocks that were not identified as FCB. */
-  otherDataBlocks: DataBlock[];
-
-  /** Decoded Intercode 6 dynamic data from Level 2, if present (for _RICS.ID1 formats). */
-  dynamicData?: IntercodeDynamicData;
-
-  /** Decoded UIC Dynamic Content Data from Level 2, if present (for FDC1 format). */
-  dynamicContentData?: UicDynamicContentData;
-
-  /** Raw Level 2 data block, if present. */
-  level2DataBlock?: DataBlock;
 }
 
-// ---------------------------------------------------------------------------
-// Security info
-// ---------------------------------------------------------------------------
+/** Level2DataType — matches ASN.1 schema. */
+export interface Level2SignedData {
+  /** Level 1 data (security metadata + data sequence). */
+  level1Data: Level1Data;
+  /** Level 1 digital signature bytes. */
+  level1Signature?: Uint8Array;
+  /** Level 2 data block (dynamic content). */
+  level2Data?: Level2Data;
+}
 
-export interface SecurityInfo {
+/** Level1DataType — matches ASN.1 schema. */
+export interface Level1Data {
   securityProviderNum?: number;
   securityProviderIA5?: string;
   keyId?: number;
+  dataSequence: DataSequenceEntry[];
   level1KeyAlg?: string;
   level2KeyAlg?: string;
   level1SigningAlg?: string;
   level2SigningAlg?: string;
   level2PublicKey?: Uint8Array;
-  level1Signature?: Uint8Array;
   endOfValidityYear?: number;
   endOfValidityDay?: number;
   endOfValidityTime?: number;
   validityDuration?: number;
 }
 
-// ---------------------------------------------------------------------------
-// Raw data block
-// ---------------------------------------------------------------------------
-
-export interface DataBlock {
+/** DataType — matches ASN.1 schema, extended with optional decoded content. */
+export interface DataSequenceEntry {
+  /** Data format identifier (e.g. "FCB1", "FCB2", "FCB3"). */
   dataFormat: string;
+  /** Raw PER-encoded data bytes. */
   data: Uint8Array;
+  /** Decoded UicRailTicketData (when dataFormat is FCBn). */
+  decoded?: UicRailTicketData;
+}
+
+/** DataType for level2Data — matches ASN.1 schema, extended with optional decoded content. */
+export interface Level2Data {
+  /** Data format identifier (e.g. "FDC1", "_3703.ID1"). */
+  dataFormat: string;
+  /** Raw PER-encoded data bytes. */
+  data: Uint8Array;
+  /** Decoded dynamic content data (UicDynamicContentData for FDC1, IntercodeDynamicData for _RICS.ID1). */
+  decoded?: UicDynamicContentData | IntercodeDynamicData;
 }
 
 // ---------------------------------------------------------------------------
-// FCB Rail Ticket Data
+// UicRailTicketData — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
-export interface RailTicketData {
-  /** FCB version, e.g. 1, 2, or 3. */
-  fcbVersion: number;
-  /** Issuing details. */
+/** Decoded FCB rail ticket data. Matches UicRailTicketData ASN.1 schema. */
+export interface UicRailTicketData {
   issuingDetail?: IssuingDetail;
-  /** Traveler information. */
   travelerDetail?: TravelerDetail;
-  /** Transport document entries. */
-  transportDocument?: TransportDocumentEntry[];
-  /** Control detail. */
+  transportDocument?: TransportDocumentData[];
   controlDetail?: ControlDetail;
-  /** The raw decoded object (untyped) for fields not covered above. */
-  raw: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
-// Issuing detail
+// Issuing detail — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
 export interface IssuingDetail {
@@ -108,10 +102,10 @@ export interface IssuingDetail {
   issuedOnTrainIA5?: string;
   issuedOnLine?: number;
   pointOfSale?: GeoCoordinate;
-  /** Decoded Intercode 6 issuing extension, if present. */
-  intercodeIssuing?: IntercodeIssuingData;
-  /** Raw extension data if present but not an Intercode extension. */
+  /** Raw extension data as defined in the ASN.1 schema. */
   extension?: ExtensionData;
+  /** Decoded Intercode 6 issuing extension (when extension is recognized as Intercode). */
+  intercodeIssuing?: IntercodeIssuingData;
 }
 
 export interface GeoCoordinate {
@@ -130,77 +124,19 @@ export interface ExtensionData {
 }
 
 // ---------------------------------------------------------------------------
-// Intercode 6 types
+// Transport document — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
-export type RetailChannel =
-  | 'smsTicket'
-  | 'mobileApplication'
-  | 'webSite'
-  | 'ticketOffice'
-  | 'depositaryTerminal'
-  | 'onBoardTerminal'
-  | 'ticketVendingMachine';
-
-export interface ProductRetailerData {
-  retailChannel?: RetailChannel;
-  retailGeneratorId?: number;
-  retailServerId?: number;
-  retailerId?: number;
-  retailPointId?: number;
-}
-
-export interface IntercodeIssuingData {
-  /** Original extension ID string (e.g. "_3703II1" or "+FRII1"). */
-  extensionId: string;
-  intercodeVersion: number;
-  intercodeInstanciation: number;
-  networkId: Uint8Array;
-  productRetailer?: ProductRetailerData;
-}
-
-export interface IntercodeDynamicData {
-  dynamicContentDay: number;
-  dynamicContentTime?: number;
-  dynamicContentUTCOffset?: number;
-  dynamicContentDuration?: number;
+/** Transport document entry. Matches the SEQUENCE { token, ticket } in the schema. */
+export interface TransportDocumentData {
+  /** Token data (optional in schema). */
+  token?: Record<string, unknown>;
+  /** The CHOICE-encoded ticket (variant name as `key`, variant data as `value`). */
+  ticket: { key: string; value: Record<string, unknown> };
 }
 
 // ---------------------------------------------------------------------------
-// UIC Dynamic Content Data (FDC1)
-// ---------------------------------------------------------------------------
-
-export interface TimeStampData {
-  day: number;
-  time: number;
-}
-
-export interface DynamicContentGeoCoordinate {
-  geoUnit?: string;
-  coordinateSystem?: string;
-  hemisphereLongitude?: string;
-  hemisphereLatitude?: string;
-  longitude: number;
-  latitude: number;
-  accuracy?: string;
-}
-
-export interface DynamicContentExtensionData {
-  extensionId: string;
-  extensionData: Uint8Array;
-}
-
-/** Decoded UIC Dynamic Content Data v1 (FDC1 format). */
-export interface UicDynamicContentData {
-  dynamicContentMobileAppId?: string;
-  dynamicContentTimeStamp?: TimeStampData;
-  dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
-  dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
-  dynamicContentExtension?: DynamicContentExtensionData;
-}
-
-// ---------------------------------------------------------------------------
-// Traveler detail
+// Traveler detail — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
 export interface TravelerDetail {
@@ -243,18 +179,7 @@ export interface CustomerStatus {
 }
 
 // ---------------------------------------------------------------------------
-// Transport document
-// ---------------------------------------------------------------------------
-
-export interface TransportDocumentEntry {
-  /** The variant name of the ticket CHOICE, e.g. "openTicket", "reservation", etc. */
-  ticketType: string;
-  /** Decoded ticket data (type depends on ticketType). */
-  ticket: Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
-// Control detail
+// Control detail — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
 export interface ControlDetail {
@@ -296,7 +221,77 @@ export interface TicketLink {
 }
 
 // ---------------------------------------------------------------------------
-// Encoding input types
+// Intercode 6 types — matches intercode6.schema.json
+// ---------------------------------------------------------------------------
+
+export type RetailChannel =
+  | 'smsTicket'
+  | 'mobileApplication'
+  | 'webSite'
+  | 'ticketOffice'
+  | 'depositaryTerminal'
+  | 'onBoardTerminal'
+  | 'ticketVendingMachine';
+
+export interface ProductRetailerData {
+  retailChannel?: RetailChannel;
+  retailGeneratorId?: number;
+  retailServerId?: number;
+  retailerId?: number;
+  retailPointId?: number;
+}
+
+export interface IntercodeIssuingData {
+  /** Original extension ID string (e.g. "_3703II1" or "+FRII1"). */
+  extensionId: string;
+  intercodeVersion: number;
+  intercodeInstanciation: number;
+  networkId: Uint8Array;
+  productRetailer?: ProductRetailerData;
+}
+
+export interface IntercodeDynamicData {
+  dynamicContentDay: number;
+  dynamicContentTime?: number;
+  dynamicContentUTCOffset?: number;
+  dynamicContentDuration?: number;
+}
+
+// ---------------------------------------------------------------------------
+// UIC Dynamic Content Data (FDC1) — matches uicDynamicContentData_v1.schema.json
+// ---------------------------------------------------------------------------
+
+export interface TimeStampData {
+  day: number;
+  time: number;
+}
+
+export interface DynamicContentGeoCoordinate {
+  geoUnit?: string;
+  coordinateSystem?: string;
+  hemisphereLongitude?: string;
+  hemisphereLatitude?: string;
+  longitude: number;
+  latitude: number;
+  accuracy?: string;
+}
+
+export interface DynamicContentExtensionData {
+  extensionId: string;
+  extensionData: Uint8Array;
+}
+
+/** Decoded UIC Dynamic Content Data v1 (FDC1 format). */
+export interface UicDynamicContentData {
+  dynamicContentMobileAppId?: string;
+  dynamicContentTimeStamp?: TimeStampData;
+  dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
+  dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
+  dynamicContentExtension?: DynamicContentExtensionData;
+}
+
+// ---------------------------------------------------------------------------
+// Encoding input types (flat structure for convenience)
 // ---------------------------------------------------------------------------
 
 /** Input for encoding a UIC barcode ticket. */
@@ -373,7 +368,7 @@ export interface IntercodeIssuingDataInput {
 }
 
 export interface IntercodeDynamicDataInput {
-  /** RICS code for the dataFormat field (e.g. 3703 → "_3703.ID1"). */
+  /** RICS code for the dataFormat field (e.g. 3703 -> "_3703.ID1"). */
   rics: number;
   dynamicContentDay?: number;
   dynamicContentTime?: number;
