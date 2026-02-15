@@ -262,14 +262,23 @@ Each function receives the decoded ticket (and extra context as needed) and retu
 **Severity**: `warning`
 **What it checks**: The dynamic content timestamp (from FDC1 or Intercode ID1) is recent enough for anti-replay protection.
 
-The maximum allowed age is derived from `security.validityDuration` (in minutes). If `validityDuration` is not set, the check is skipped with an info message.
+If no dynamic data is present, the check is skipped with an info message.
 
-- For **FDC1**: reads `dynamicContentData.dynamicContentTimeStamp` (day + time in seconds). Computes the absolute timestamp using the issuing year as epoch base. Checks that the dynamic content time is within `validityDuration` minutes of `now`.
-- For **Intercode ID1**: reads `dynamicData.dynamicContentDay` and `dynamicData.dynamicContentTime` (minutes from midnight) with optional UTC offset. Same freshness check using `validityDuration`.
-- If no dynamic data is present, the check is skipped with an info message.
-- Uses the issuing date from `issuingDetail` as the reference epoch for day-offset fields.
+**For FDC1** (`dynamicContentData.dynamicContentTimeStamp`):
+- `day`: day-of-year (1 = January 1st, 2 = January 2nd, ..., 366 max).
+- `time`: seconds of the day (0 = 00:00:00, 86399 = 23:59:59).
+- Absolute generation timestamp is computed from `issuingDetail.issuingYear` + `day` + `time`.
+- The content is valid from the generation time for `security.validityDuration` minutes. If `validityDuration` is not set, the check is skipped with an info message.
 
-**Passes when**: The dynamic content timestamp is within the `validityDuration` window relative to `now`.
+**For Intercode ID1** (`dynamicData`):
+- `dynamicContentDay`: number of days elapsed since the barcode issuing date (in local time). The issuing date is `issuingDetail.issuingYear` + `issuingDetail.issuingDay` (UTC).
+- `dynamicContentTime`: seconds since midnight in local time (0 = 00:00:00, 86399 = 23:59:59).
+- `dynamicContentUTCOffset`: offset in 15-minute steps between local time and UTC. UTC = local time + offset * 15 minutes.
+- `dynamicContentDuration`: validity duration in seconds from the generation time. If absent, fall back to `security.validityDuration` (converted to seconds).
+- Absolute generation timestamp (UTC) is computed as: issuing date + `dynamicContentDay` days + `dynamicContentTime` seconds + `dynamicContentUTCOffset` * 15 minutes.
+- The content is valid from the generation time for `dynamicContentDuration` seconds (or `validityDuration` minutes if duration is absent). If neither is available, the check is skipped with an info message.
+
+**Passes when**: `now` is before the generation timestamp plus the applicable validity duration.
 
 ---
 
