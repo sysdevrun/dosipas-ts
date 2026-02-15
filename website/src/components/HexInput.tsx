@@ -3,6 +3,9 @@ import {
   SAMPLE_TICKET_HEX,
   SNCF_TER_TICKET_HEX,
   SOLEA_TICKET_HEX,
+  BUS_ARDECHE_TICKET_HEX,
+  BUS_AIN_TICKET_HEX,
+  DROME_BUS_TICKET_HEX,
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
 } from 'dosipas-ts';
@@ -13,6 +16,9 @@ const PREFILLS = [
   { label: 'Sample', hex: SAMPLE_TICKET_HEX },
   { label: 'SNCF TER', hex: SNCF_TER_TICKET_HEX },
   { label: 'Solea', hex: SOLEA_TICKET_HEX },
+  { label: 'Cars Ardèche', hex: BUS_ARDECHE_TICKET_HEX },
+  { label: 'Cars Ain', hex: BUS_AIN_TICKET_HEX },
+  { label: 'Cars Drôme', hex: DROME_BUS_TICKET_HEX },
   { label: 'CTS', hex: CTS_TICKET_HEX },
   { label: 'Grand Est', hex: GRAND_EST_U1_FCB3_HEX },
 ];
