@@ -397,6 +397,42 @@ export interface TransportDocumentInput {
 }
 
 // ---------------------------------------------------------------------------
+// Ticket control types
+// ---------------------------------------------------------------------------
+
+/** Options for ticket control / validation. */
+export interface ControlOptions {
+  /** Reference date/time for temporal checks. Defaults to `new Date()`. */
+  now?: Date;
+  /** Level 1 key provider callback for signature verification. */
+  level1KeyProvider?: Level1KeyProvider;
+  /**
+   * Set of expected Intercode network IDs (hex strings, e.g. "250502").
+   * When provided, intercodeIssuing must be present and its networkId must
+   * match one of the expected values.
+   */
+  expectedIntercodeNetworkIds?: Set<string>;
+}
+
+/** Result of a single validation check. */
+export interface CheckResult {
+  name: string;
+  passed: boolean;
+  severity: 'error' | 'warning' | 'info';
+  message?: string;
+}
+
+/** Aggregated control result for a ticket. */
+export interface ControlResult {
+  /** True only if every check with severity 'error' passed. */
+  valid: boolean;
+  /** The decoded ticket (undefined if decoding failed). */
+  ticket?: UicBarcodeTicket;
+  /** Individual check results keyed by check name. */
+  checks: Record<string, CheckResult>;
+}
+
+// ---------------------------------------------------------------------------
 // Signature verification types
 // ---------------------------------------------------------------------------
 

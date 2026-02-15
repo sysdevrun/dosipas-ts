@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import type { UicBarcodeTicketInput } from 'dosipas-ts';
 import DecodeTab from './components/DecodeTab';
 import EncodeTab from './components/EncodeTab';
+import ControlTab from './components/ControlTab';
 
-type Tab = 'decode' | 'encode';
+type Tab = 'decode' | 'encode' | 'control';
 
 function getInitialTab(): Tab {
   const hash = window.location.hash;
   if (hash.startsWith('#encode')) return 'encode';
+  if (hash.startsWith('#control')) return 'control';
   return 'decode';
 }
 
@@ -27,7 +29,11 @@ export default function App() {
       const match = window.location.hash.match(/[#&]hex=([0-9a-fA-F]+)/);
       if (match) {
         setSharedHex(match[1]);
-        setTab('decode');
+        if (window.location.hash.startsWith('#control')) {
+          setTab('control');
+        } else {
+          setTab('decode');
+        }
       }
     };
     window.addEventListener('hashchange', onHashChange);
@@ -38,6 +44,12 @@ export default function App() {
     setSharedHex(hex);
     setTab('decode');
     window.location.hash = `hex=${hex}`;
+  };
+
+  const switchToControl = (hex: string) => {
+    setSharedHex(hex);
+    setTab('control');
+    window.location.hash = `control&hex=${hex}`;
   };
 
   const switchToEncode = (input: UicBarcodeTicketInput) => {
@@ -71,6 +83,16 @@ export default function App() {
             >
               Encode
             </button>
+            <button
+              onClick={() => setTab('control')}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                tab === 'control'
+                  ? 'bg-blue-100 text-blue-800'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              Control
+            </button>
           </nav>
           <a
             href="https://github.com/sysdevrun/dosipas-ts"
@@ -84,17 +106,26 @@ export default function App() {
         </div>
       </header>
       <main className="max-w-5xl mx-auto px-4 py-6">
-        {tab === 'decode' ? (
+        {tab === 'decode' && (
           <DecodeTab
             initialHex={sharedHex}
             onHexChange={(h) => setSharedHex(h)}
             onEditInEncoder={switchToEncode}
+            onControl={switchToControl}
           />
-        ) : (
+        )}
+        {tab === 'encode' && (
           <EncodeTab
             onDecode={switchToDecode}
+            onControl={switchToControl}
             prefillInput={prefillInput}
             onPrefillConsumed={() => setPrefillInput(null)}
+          />
+        )}
+        {tab === 'control' && (
+          <ControlTab
+            initialHex={sharedHex}
+            onHexChange={(h) => setSharedHex(h)}
           />
         )}
       </main>
