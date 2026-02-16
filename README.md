@@ -1,10 +1,12 @@
 # dosipas-ts
 
-> **[Try the online playground](https://sysdevrun.github.io/dosipas-ts/)** — decode, encode, sign, and verify UIC barcode tickets in your browser.
+> **[Try the online playground](https://sysdevrun.github.io/dosipas-ts/)** — decode, encode, sign, verify, and control UIC barcode tickets in your browser.
 
-Decode, encode, and verify UIC barcode tickets with Intercode 6 extensions in TypeScript.
+Decode, encode, sign, verify, and control UIC barcode tickets with Intercode 6 extensions in TypeScript.
 
-Handles the full UIC barcode envelope (header versions 1 and 2), FCB rail ticket data (versions 1, 2, and 3), Intercode 6 issuing extensions, dynamic data, and two-level ECDSA signature verification.
+Handles the full UIC barcode envelope (header versions 1 and 2), FCB rail ticket data (versions 1, 2, and 3), Intercode 6 issuing extensions, dynamic data (both Intercode ID1 and FDC1 formats), and two-level ECDSA signature verification and signing.
+
+ASN.1 PER unaligned payloads are parsed using [`asn1-per-ts`](https://github.com/sysdevrun/asn1-per-ts).
 
 ## Install
 
@@ -14,7 +16,7 @@ npm install dosipas-ts
 
 ## Requirements
 
-- **Node.js ≥ 20** — Node 18 is not supported because `globalThis.crypto` (Web Crypto API) is not available as a stable global until Node 20. The `@noble/curves` and `@noble/hashes` dependencies rely on it for cryptographic operations.
+- **Node.js >= 20** — Node 18 is not supported because `globalThis.crypto` (Web Crypto API) is not available as a stable global until Node 20. The `@noble/curves` and `@noble/hashes` dependencies rely on it for cryptographic operations.
 - **ESM-only** — this package uses `"type": "module"` and provides only ESM exports.
 
 ## Decoding
@@ -29,31 +31,57 @@ const ticket = decodeTicket('815563dd8e76...');
 const ticket = decodeTicketFromBytes(bytes);
 ```
 
-The returned `UicBarcodeTicket` object contains:
+The returned `UicBarcodeTicket` follows the UIC barcode ASN.1 schema hierarchy:
 
 ```ts
-ticket.format          // "U1" or "U2"
-ticket.headerVersion   // 1 or 2
-ticket.security        // SecurityInfo (provider, key IDs, algorithms, signatures)
-ticket.railTickets     // RailTicketData[] (FCB-decoded ticket data)
-ticket.otherDataBlocks // DataBlock[] (non-FCB data blocks)
-ticket.dynamicData     // IntercodeDynamicData (Intercode 6 Level 2, if present)
-ticket.level2Signature // Uint8Array (if present)
+ticket.format                          // "U1" or "U2"
+ticket.level2SignedData.level1Data     // security metadata + data sequence
+ticket.level2SignedData.level1Signature // Level 1 signature bytes
+ticket.level2SignedData.level2Data     // dynamic content block (FDC1 or Intercode ID1)
+ticket.level2Signature                 // Level 2 signature bytes
 ```
 
-Each rail ticket includes typed fields for issuing details, traveler info, transport documents, and control details:
+Security metadata and algorithm OIDs live on `level1Data`:
 
 ```ts
-const rt = ticket.railTickets[0];
+const l1 = ticket.level2SignedData.level1Data;
 
-rt.fcbVersion                              // 1, 2, or 3
+l1.securityProviderNum   // RICS code of the security provider
+l1.keyId                 // key ID for signature lookup
+l1.level1KeyAlg          // Level 1 key algorithm OID
+l1.level1SigningAlg      // Level 1 signing algorithm OID
+l1.level2KeyAlg          // Level 2 key algorithm OID
+l1.level2SigningAlg      // Level 2 signing algorithm OID
+l1.level2PublicKey       // Level 2 public key bytes (embedded in barcode)
+l1.endOfValidityYear     // v2 headers only
+l1.endOfValidityDay      // v2 headers only
+l1.validityDuration      // seconds
+```
+
+Rail ticket data is in `level1Data.dataSequence`:
+
+```ts
+const entry = ticket.level2SignedData.level1Data.dataSequence[0];
+
+entry.dataFormat          // "FCB1", "FCB2", or "FCB3"
+entry.data                // raw PER-encoded bytes
+
+const rt = entry.decoded; // UicRailTicketData (when dataFormat is FCBn)
 rt.issuingDetail?.issuerNum                // RICS code
 rt.issuingDetail?.issuingYear              // e.g. 2025
 rt.issuingDetail?.issuingDay               // day of year
 rt.issuingDetail?.intercodeIssuing         // Intercode 6 issuing extension
 rt.travelerDetail?.traveler?.[0].firstName // traveler name
-rt.transportDocument?.[0].ticketType       // e.g. "openTicket", "reservation"
-rt.raw                                     // full decoded object for fields not covered above
+rt.transportDocument?.[0].ticket           // { key: "openTicket", value: { ... } }
+```
+
+Dynamic content is in `level2Data`:
+
+```ts
+const l2 = ticket.level2SignedData.level2Data;
+
+l2.dataFormat  // "FDC1" or "_3703.ID1" (Intercode)
+l2.decoded     // UicDynamicContentData (FDC1) or IntercodeDynamicData (Intercode)
 ```
 
 ## Encoding
@@ -100,6 +128,52 @@ const hex = encodeTicket({
 
 // Or get bytes directly
 const bytes = encodeTicketToBytes({ /* same input */ });
+```
+
+## Signing
+
+Sign tickets with ECDSA using the two-pass signing flow (Level 1, then Level 2):
+
+```ts
+import { signAndEncodeTicket, generateKeyPair } from 'dosipas-ts';
+
+const level1Key = generateKeyPair('P-256');
+const level2Key = generateKeyPair('P-256');
+
+const ticketBytes = signAndEncodeTicket(
+  {
+    headerVersion: 2,
+    fcbVersion: 2,
+    securityProviderNum: 3703,
+    keyId: 1,
+    railTicket: {
+      issuingDetail: {
+        issuerNum: 3703,
+        issuingYear: 2025,
+        issuingDay: 44,
+        activated: true,
+      },
+      transportDocument: [
+        { ticketType: 'openTicket', ticket: { /* ... */ } },
+      ],
+    },
+  },
+  level1Key,
+  level2Key, // omit for static barcodes (Level 1 only)
+);
+```
+
+For finer control, sign each level independently:
+
+```ts
+import { signLevel1, signLevel2 } from 'dosipas-ts';
+
+const level1Sig = signLevel1(input, privateKey, 'P-256');
+const level2Sig = signLevel2(
+  { ...input, level1Signature: level1Sig },
+  level2PrivateKey,
+  'P-256',
+);
 ```
 
 ## Signature verification
@@ -159,6 +233,39 @@ import { verifyLevel1Signature } from 'dosipas-ts';
 const result = await verifyLevel1Signature(barcodeBytes, publicKeyBytes);
 ```
 
+## Ticket control
+
+Perform comprehensive validation of a ticket in a single call:
+
+```ts
+import { controlTicket } from 'dosipas-ts';
+
+const result = await controlTicket(hexPayload, {
+  level1KeyProvider: provider,
+  expectedIntercodeNetworkIds: new Set(['250502']),
+});
+
+result.valid   // true only if all error-severity checks passed
+result.ticket  // decoded UicBarcodeTicket
+result.checks  // individual check results keyed by name
+```
+
+Checks performed: decode, header format, security info, Level 1 signature, Level 2 signature, expiry, specimen flag, activated flag, issuing detail, transport document, Intercode extension (with optional network ID validation), dynamic data format, and dynamic content freshness.
+
+## Time helpers
+
+Compute UTC timestamps from ticket fields:
+
+```ts
+import { getIssuingTime, getEndOfValidityTime, getDynamicContentTime } from 'dosipas-ts';
+
+const ticket = decodeTicket(hex);
+
+getIssuingTime(ticket)         // Date from issuingYear + issuingDay + issuingTime
+getEndOfValidityTime(ticket)   // Date from v2 endOfValidity fields or v1 issuing + duration
+getDynamicContentTime(ticket)  // Date from FDC1 timestamp or Intercode ID1 dynamic fields
+```
+
 ## Extracting signed data
 
 For custom verification workflows, extract the exact signed bytes from a barcode:
@@ -198,6 +305,9 @@ import {
   SOLEA_TICKET_HEX,
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
+  BUS_ARDECHE_TICKET_HEX,
+  BUS_AIN_TICKET_HEX,
+  DROME_BUS_TICKET_HEX,
 } from 'dosipas-ts';
 ```
 
@@ -209,8 +319,8 @@ import { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from 'dosipas-t
 
 ## Supported algorithms
 
-| Algorithm | Signing | Key verification |
-|-----------|---------|-----------------|
+| Algorithm | Signing | Verification |
+|-----------|---------|--------------|
 | ECDSA P-256 with SHA-256 | Yes | Yes |
 | ECDSA P-384 with SHA-384 | Yes | Yes |
 | ECDSA P-521 with SHA-512 | Yes | Yes |
