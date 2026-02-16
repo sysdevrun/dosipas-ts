@@ -418,11 +418,13 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                 },
               };
             } else {
-              // Intercode: day is offset from issuing date, time is local seconds since midnight
+              // Intercode: day is offset from issuing date (UTC) to local date, time is local seconds since midnight
               const iss = params.input.railTicket.issuingDetail;
-              const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
-              const todayUTC = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-              const dayOffset = Math.floor((todayUTC.getTime() - issuingDate.getTime()) / 86400_000);
+              const issuingDateNum = Date.UTC(iss.issuingYear, 0, iss.issuingDay);
+              // Use local calendar date (getFullYear/Month/Date) expressed via Date.UTC for pure calendar-day arithmetic.
+              // Per IRS 90918-9 §7.3: dynamicContentDay = localDate - issuingDate(UTC), ignoring times.
+              const localDateNum = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+              const dayOffset = Math.floor((localDateNum - issuingDateNum) / 86400_000);
               const localSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
               // dynamicContentUTCOffset: quarter-hours where UTC = local + offset * 15min
               const utcOffsetQH = Math.round(now.getTimezoneOffset() / 15);
