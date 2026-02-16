@@ -7,6 +7,7 @@
  */
 import { decodeTicket } from './decoder';
 import { verifyLevel1Signature, verifyLevel2Signature } from './verifier';
+import { getIssuingTime, getEndOfValidityTime, getDynamicContentTime } from './time-helpers';
 import type {
   UicBarcodeTicket,
   UicRailTicketData,
@@ -178,46 +179,22 @@ async function checkLevel2Signature(
 }
 
 function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
-  const l1 = ticket.level2SignedData.level1Data;
-
-  if (headerVersion(ticket) >= 2 && l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
-    // v2 header: compute expiry from end-of-validity fields
-    const year = l1.endOfValidityYear;
-    const day = l1.endOfValidityDay;
-    const timeMinutes = l1.endOfValidityTime ?? 0;
-    const durationSeconds = l1.validityDuration ?? 0;
-
-    // Compute date from year + day-of-year + endOfValidityTime (minutes) + validityDuration (seconds)
-    const expiry = new Date(Date.UTC(year, 0, day, 0, timeMinutes) + durationSeconds * 1000);
-    const passed = now < expiry;
+  const expiry = getEndOfValidityTime(ticket);
+  if (!expiry) {
     return {
       name: 'Not Expired',
-      passed,
-      severity: 'error',
-      message: passed ? undefined : `Ticket expired at ${expiry.toISOString()}`,
+      passed: true,
+      severity: 'info',
+      message: 'Cannot determine expiry — no validity duration available',
     };
   }
 
-  // v1 header: use issuing date + validityDuration
-  const rt = firstRailTicket(ticket);
-  const iss = rt?.issuingDetail;
-  if (iss && l1.validityDuration != null) {
-    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay, 0, iss.issuingTime ?? 0));
-    const expiry = new Date(issuingDate.getTime() + l1.validityDuration * 1000);
-    const passed = now < expiry;
-    return {
-      name: 'Not Expired',
-      passed,
-      severity: 'error',
-      message: passed ? undefined : `Ticket expired at ${expiry.toISOString()}`,
-    };
-  }
-
+  const passed = now < expiry;
   return {
     name: 'Not Expired',
-    passed: true,
-    severity: 'info',
-    message: 'Cannot determine expiry — no validity duration available',
+    passed,
+    severity: 'error',
+    message: passed ? undefined : `Ticket expired at ${expiry.toISOString()}`,
   };
 }
 
@@ -401,103 +378,56 @@ function checkDynamicContentFreshness(
   ticket: UicBarcodeTicket,
   now: Date,
 ): CheckResult {
-  const iss = firstRailTicket(ticket)?.issuingDetail;
   const l1 = ticket.level2SignedData.level1Data;
 
-  // FDC1 dynamic content
-  const fdc = fdc1Data(ticket);
-  if (fdc?.dynamicContentTimeStamp) {
-    const ts = fdc.dynamicContentTimeStamp;
-    if (!iss) {
+  const genTime = getDynamicContentTime(ticket);
+  if (!genTime) {
+    // No dynamic content or required fields missing
+    const l2 = ticket.level2SignedData.level2Data;
+    if (!l2?.decoded) {
       return {
         name: 'Dynamic Content Freshness',
         passed: true,
         severity: 'info',
-        message: 'Cannot compute freshness — no issuing detail',
+        message: 'No dynamic content present',
       };
     }
-
-    const validityDuration = l1.validityDuration;
-    if (validityDuration == null) {
-      return {
-        name: 'Dynamic Content Freshness',
-        passed: true,
-        severity: 'info',
-        message: 'Cannot compute freshness — no validityDuration',
-      };
-    }
-
-    // Compute generation timestamp from issuingYear + day + time
-    const genTime = new Date(Date.UTC(iss.issuingYear, 0, ts.day, 0, 0, ts.time));
-    const expiryTime = new Date(genTime.getTime() + validityDuration * 1000);
-    const passed = now < expiryTime;
-
     return {
       name: 'Dynamic Content Freshness',
-      passed,
-      severity: 'error',
-      message: passed
-        ? undefined
-        : `Dynamic content expired at ${expiryTime.toISOString()}`,
+      passed: true,
+      severity: 'info',
+      message: 'Cannot compute freshness — missing fields',
     };
   }
 
-  // Intercode dynamic data
+  // Determine duration: for Intercode, prefer dynamicContentDuration, then validityDuration
+  let durationMs: number | undefined;
   const dd = intercodeDynamic(ticket);
-  if (dd) {
-    if (!iss) {
-      return {
-        name: 'Dynamic Content Freshness',
-        passed: true,
-        severity: 'info',
-        message: 'Cannot compute freshness — no issuing detail',
-      };
-    }
+  if (dd?.dynamicContentDuration != null) {
+    durationMs = dd.dynamicContentDuration * 1000;
+  } else if (l1.validityDuration != null) {
+    durationMs = l1.validityDuration * 1000;
+  }
 
-    // Compute issuing date
-    const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
-
-    // Generation time = issuingDate + dynamicContentDay days + dynamicContentTime seconds + UTC offset
-    const genTimeMs = issuingDate.getTime()
-      + (dd.dynamicContentDay ?? 0) * 86400 * 1000
-      + (dd.dynamicContentTime ?? 0) * 1000
-      + (dd.dynamicContentUTCOffset ?? 0) * 15 * 60 * 1000;
-
-    // Duration: dynamicContentDuration (seconds) or validityDuration (seconds)
-    let durationMs: number | undefined;
-    if (dd.dynamicContentDuration != null) {
-      durationMs = dd.dynamicContentDuration * 1000;
-    } else if (l1.validityDuration != null) {
-      durationMs = l1.validityDuration * 1000;
-    }
-
-    if (durationMs == null) {
-      return {
-        name: 'Dynamic Content Freshness',
-        passed: true,
-        severity: 'info',
-        message: 'Cannot compute freshness — no duration available',
-      };
-    }
-
-    const expiryTime = new Date(genTimeMs + durationMs);
-    const passed = now < expiryTime;
-
+  if (durationMs == null) {
     return {
       name: 'Dynamic Content Freshness',
-      passed,
-      severity: 'error',
-      message: passed
-        ? undefined
-        : `Dynamic content expired at ${expiryTime.toISOString()}`,
+      passed: true,
+      severity: 'info',
+      message: 'Cannot compute freshness — no duration available',
     };
   }
+
+  const expiryTime = new Date(genTime.getTime() + durationMs);
+  const passed = now < expiryTime;
 
   return {
     name: 'Dynamic Content Freshness',
-    passed: true,
-    severity: 'info',
-    message: 'No dynamic content present',
+    passed,
+    severity: 'error',
+    message: passed
+      ? undefined
+      : `Dynamic content expired at ${expiryTime.toISOString()}`,
   };
 }
 

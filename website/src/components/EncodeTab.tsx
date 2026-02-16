@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { UicBarcodeTicketInput, UicDynamicContentDataInput, CurveName } from 'dosipas-ts';
+import type { UicBarcodeTicketInput, CurveName } from 'dosipas-ts';
 import TicketForm, { ToggleSection, NumberField, OptionalNumberField } from './TicketForm';
 import KeyPairInput from './KeyPairInput';
 import AztecBarcode from './AztecBarcode';
@@ -14,6 +14,85 @@ import {
   CURVES,
   type KeyPair,
 } from '../lib/signing';
+
+// ---------------------------------------------------------------------------
+// Time computation helpers for encode input display
+// ---------------------------------------------------------------------------
+
+function formatISOWithTZ(date: Date, utcOffsetQuarterHours?: number): string {
+  if (utcOffsetQuarterHours == null) {
+    return date.toISOString().replace('.000Z', 'Z');
+  }
+  const stdOffsetMin = -utcOffsetQuarterHours * 15;
+  const localMs = date.getTime() + stdOffsetMin * 60_000;
+  const local = new Date(localMs);
+  const sign = stdOffsetMin >= 0 ? '+' : '-';
+  const absMin = Math.abs(stdOffsetMin);
+  const hh = String(Math.floor(absMin / 60)).padStart(2, '0');
+  const mm = String(absMin % 60).padStart(2, '0');
+  const y = local.getUTCFullYear();
+  const mo = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(local.getUTCDate()).padStart(2, '0');
+  const h = String(local.getUTCHours()).padStart(2, '0');
+  const m = String(local.getUTCMinutes()).padStart(2, '0');
+  const s = String(local.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${mo}-${d}T${h}:${m}:${s}${sign}${hh}:${mm}`;
+}
+
+function computeIssuingTime(input: UicBarcodeTicketInput): Date | undefined {
+  const iss = input.railTicket.issuingDetail;
+  if (iss.issuingYear == null || iss.issuingDay == null) return undefined;
+  return new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay, 0, iss.issuingTime ?? 0));
+}
+
+function computeEndOfValidity(input: UicBarcodeTicketInput): Date | undefined {
+  if (input.endOfValidityYear != null && input.endOfValidityDay != null) {
+    return new Date(
+      Date.UTC(input.endOfValidityYear, 0, input.endOfValidityDay, 0, input.endOfValidityTime ?? 0)
+      + (input.validityDuration ?? 0) * 1000,
+    );
+  }
+  if (input.validityDuration != null) {
+    const issuing = computeIssuingTime(input);
+    if (issuing) return new Date(issuing.getTime() + input.validityDuration * 1000);
+  }
+  return undefined;
+}
+
+function computeFdc1Time(input: UicBarcodeTicketInput): Date | undefined {
+  const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+  if (!ts) return undefined;
+  const iss = input.railTicket.issuingDetail;
+  return new Date(Date.UTC(iss.issuingYear, 0, ts.day, 0, 0, ts.time));
+}
+
+function computeIntercodeTime(input: UicBarcodeTicketInput): Date | undefined {
+  const dd = input.dynamicData;
+  if (!dd) return undefined;
+  const iss = input.railTicket.issuingDetail;
+  const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
+  return new Date(
+    issuingDate.getTime()
+    + (dd.dynamicContentDay ?? 0) * 86400_000
+    + (dd.dynamicContentTime ?? 0) * 1000
+    + (dd.dynamicContentUTCOffset ?? 0) * 15 * 60_000,
+  );
+}
+
+function ComputedTimeDisplay({ date, utcOffsetQuarterHours }: { date: Date | undefined; utcOffsetQuarterHours?: number }) {
+  if (!date) return null;
+  return (
+    <span className="text-xs font-mono text-indigo-600 ml-1">
+      {formatISOWithTZ(date, utcOffsetQuarterHours)}
+    </span>
+  );
+}
+
+/** Compute UTC day-of-year (1-366) from a Date. */
+function utcDayOfYear(date: Date): number {
+  const startOfYear = Date.UTC(date.getUTCFullYear(), 0, 0);
+  return Math.floor((date.getTime() - startOfYear) / 86400_000);
+}
 
 /** NIST FIPS 186-4 ECDSA P-256 KeyPair test vector private keys (from CAVP KeyPair.rsp). */
 const FIPS_TEST_KEY_1 = 'c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357';
@@ -322,33 +401,40 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
           const params = regenRef.current;
           if (params) {
             const now = new Date();
-            const startOfYear = new Date(now.getFullYear(), 0, 0);
-            const dayOfYear =
-              Math.floor(
-                (now.getTime() - startOfYear.getTime()) / 86400000,
-              ) - 1;
-            const secondsSinceMidnight =
-              now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
             let updatedInput: UicBarcodeTicketInput;
             if (params.input.dynamicContentData) {
+              // FDC1: day is absolute day-of-year (1-366), time is seconds since midnight UTC
+              const fdc1Day = utcDayOfYear(now);
+              const fdc1Time = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
               updatedInput = {
                 ...params.input,
                 dynamicContentData: {
                   ...params.input.dynamicContentData,
                   dynamicContentTimeStamp: {
-                    day: dayOfYear,
-                    time: secondsSinceMidnight,
+                    day: fdc1Day,
+                    time: fdc1Time,
                   },
                 },
               };
             } else {
+              // Intercode: day is offset from issuing date (UTC) to local date, time is local seconds since midnight
+              const iss = params.input.railTicket.issuingDetail;
+              const issuingDateNum = Date.UTC(iss.issuingYear, 0, iss.issuingDay);
+              // Use local calendar date (getFullYear/Month/Date) expressed via Date.UTC for pure calendar-day arithmetic.
+              // Per IRS 90918-9 §7.3: dynamicContentDay = localDate - issuingDate(UTC), ignoring times.
+              const localDateNum = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+              const dayOffset = Math.floor((localDateNum - issuingDateNum) / 86400_000);
+              const localSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+              // dynamicContentUTCOffset: quarter-hours where UTC = local + offset * 15min
+              const utcOffsetQH = Math.round(now.getTimezoneOffset() / 15);
               updatedInput = {
                 ...params.input,
                 dynamicData: {
                   ...params.input.dynamicData!,
-                  dynamicContentDay: dayOfYear,
-                  dynamicContentTime: secondsSinceMidnight,
+                  dynamicContentDay: dayOffset,
+                  dynamicContentTime: localSeconds,
+                  dynamicContentUTCOffset: utcOffsetQH,
                 },
               };
             }
@@ -452,6 +538,13 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   const dynamicFormat: 'intercode' | 'fdc1' = input.dynamicContentData ? 'fdc1' : 'intercode';
   const l2KeyPresent = l2Enabled && !!l2PrivKey;
 
+  // Computed times for display
+  const issuingTime = useMemo(() => computeIssuingTime(input), [input]);
+  const endOfValidity = useMemo(() => computeEndOfValidity(input), [input]);
+  const dynamicTime = useMemo(() =>
+    dynamicFormat === 'fdc1' ? computeFdc1Time(input) : computeIntercodeTime(input),
+  [input, dynamicFormat]);
+
   return (
     <div className="space-y-6">
       {/* ================================================================= */}
@@ -479,6 +572,22 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
           value={input}
           onChange={handleInputChange}
         />
+
+        {/* Computed times */}
+        {(issuingTime || endOfValidity) && (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 px-1 text-xs">
+            {issuingTime && (
+              <span className="text-gray-400">
+                issuing time: <ComputedTimeDisplay date={issuingTime} />
+              </span>
+            )}
+            {endOfValidity && (
+              <span className="text-gray-400">
+                end of validity: <ComputedTimeDisplay date={endOfValidity} />
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Level 1 Signature */}
         <SignatureSection
@@ -616,6 +725,11 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                     }}
                     placeholder="Seconds since midnight (0-86399)"
                   />
+                  {dynamicTime && (
+                    <div className="col-span-2 text-xs text-gray-400">
+                      generation time: <ComputedTimeDisplay date={dynamicTime} />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -647,6 +761,11 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                     value={input.dynamicData?.dynamicContentDuration}
                     onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
                   />
+                  {dynamicTime && (
+                    <div className="col-span-2 text-xs text-gray-400">
+                      generation time: <ComputedTimeDisplay date={dynamicTime} utcOffsetQuarterHours={input.dynamicData?.dynamicContentUTCOffset} />
+                    </div>
+                  )}
                 </>
               )}
 

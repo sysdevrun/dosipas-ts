@@ -1,5 +1,44 @@
 import type { UicBarcodeTicket, Level1Data, UicRailTicketData, IssuingDetail, IntercodeIssuingData, IntercodeDynamicData, UicDynamicContentData, TravelerDetail, TravelerInfo, CustomerStatus, TransportDocumentData, ControlDetail, DataSequenceEntry, Level2Data } from 'dosipas-ts';
+import { getIssuingTime, getEndOfValidityTime, getDynamicContentTime } from 'dosipas-ts';
 import JsonTree from './JsonTree';
+
+/**
+ * Format a UTC Date as ISO 8601 with an optional timezone offset.
+ * When utcOffsetQuarterHours is provided, the time is displayed in local time
+ * with the corresponding timezone offset (e.g. +02:00).
+ * Otherwise it's displayed as UTC with Z suffix.
+ */
+function formatISOWithTZ(date: Date, utcOffsetQuarterHours?: number): string {
+  if (utcOffsetQuarterHours == null) {
+    return date.toISOString().replace('.000Z', 'Z');
+  }
+  // UTC = local + offset * 15min, so local = UTC - offset * 15min
+  // Standard timezone offset (minutes ahead of UTC) = -offset * 15
+  const stdOffsetMin = -utcOffsetQuarterHours * 15;
+  const localMs = date.getTime() + stdOffsetMin * 60_000;
+  const local = new Date(localMs);
+  const sign = stdOffsetMin >= 0 ? '+' : '-';
+  const absMin = Math.abs(stdOffsetMin);
+  const hh = String(Math.floor(absMin / 60)).padStart(2, '0');
+  const mm = String(absMin % 60).padStart(2, '0');
+  const y = local.getUTCFullYear();
+  const mo = String(local.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(local.getUTCDate()).padStart(2, '0');
+  const h = String(local.getUTCHours()).padStart(2, '0');
+  const m = String(local.getUTCMinutes()).padStart(2, '0');
+  const s = String(local.getUTCSeconds()).padStart(2, '0');
+  return `${y}-${mo}-${d}T${h}:${m}:${s}${sign}${hh}:${mm}`;
+}
+
+function ComputedTime({ label, date, utcOffsetQuarterHours }: { label: string; date: Date | undefined; utcOffsetQuarterHours?: number }) {
+  if (!date) return null;
+  return (
+    <div className="flex gap-2 py-0.5">
+      <span className="text-gray-400 min-w-32 shrink-0 italic text-xs">{label}</span>
+      <span className="font-mono text-indigo-600 text-xs">{formatISOWithTZ(date, utcOffsetQuarterHours)}</span>
+    </div>
+  );
+}
 
 interface Props {
   ticket: UicBarcodeTicket;
@@ -102,7 +141,7 @@ function EmbeddedBlock({
   );
 }
 
-function Level1DataSection({ l1 }: { l1: Level1Data }) {
+function Level1DataSection({ l1, endOfValidity }: { l1: Level1Data; endOfValidity?: Date }) {
   return (
     <Section title="level1Data">
       <Field label="securityProviderNum" value={l1.securityProviderNum} />
@@ -117,11 +156,12 @@ function Level1DataSection({ l1 }: { l1: Level1Data }) {
       <Field label="endOfValidityDay" value={l1.endOfValidityDay} />
       <Field label="endOfValidityTime" value={l1.endOfValidityTime} />
       <Field label="validityDuration" value={l1.validityDuration} />
+      <ComputedTime label="end of validity" date={endOfValidity} />
     </Section>
   );
 }
 
-function IssuingSection({ detail }: { detail: IssuingDetail }) {
+function IssuingSection({ detail, issuingDate }: { detail: IssuingDetail; issuingDate?: Date }) {
   return (
     <Section title="issuingDetail">
       <Field label="securityProviderNum" value={detail.securityProviderNum} />
@@ -132,6 +172,7 @@ function IssuingSection({ detail }: { detail: IssuingDetail }) {
       <Field label="issuingYear" value={detail.issuingYear} />
       <Field label="issuingDay" value={detail.issuingDay} />
       <Field label="issuingTime" value={detail.issuingTime} />
+      <ComputedTime label="issuing time" date={issuingDate} />
       <Field label="specimen" value={detail.specimen} />
       <Field label="securePaperTicket" value={detail.securePaperTicket} />
       <Field label="activated" value={detail.activated} />
@@ -308,7 +349,7 @@ function ControlSection({ detail }: { detail: ControlDetail }) {
   );
 }
 
-function IntercodeDynamicSection({ data, dataFormat }: { data: IntercodeDynamicData; dataFormat: string }) {
+function IntercodeDynamicSection({ data, dataFormat, dynamicTime }: { data: IntercodeDynamicData; dataFormat: string; dynamicTime?: Date }) {
   return (
     <Section title="level2Data (IntercodeDynamicData)">
       <Field label="dataFormat" value={dataFormat} />
@@ -316,11 +357,12 @@ function IntercodeDynamicSection({ data, dataFormat }: { data: IntercodeDynamicD
       <Field label="dynamicContentTime" value={data.dynamicContentTime} />
       <Field label="dynamicContentUTCOffset" value={data.dynamicContentUTCOffset} />
       <Field label="dynamicContentDuration" value={data.dynamicContentDuration} />
+      <ComputedTime label="generation time" date={dynamicTime} utcOffsetQuarterHours={data.dynamicContentUTCOffset} />
     </Section>
   );
 }
 
-function DynamicContentDataSection({ data, dataFormat }: { data: UicDynamicContentData; dataFormat: string }) {
+function DynamicContentDataSection({ data, dataFormat, dynamicTime }: { data: UicDynamicContentData; dataFormat: string; dynamicTime?: Date }) {
   return (
     <Section title="level2Data (UicDynamicContentData)">
       <Field label="dataFormat" value={dataFormat} />
@@ -330,6 +372,7 @@ function DynamicContentDataSection({ data, dataFormat }: { data: UicDynamicConte
           <span className="text-xs text-gray-400">dynamicContentTimeStamp</span>
           <Field label="day" value={data.dynamicContentTimeStamp.day} />
           <Field label="time" value={data.dynamicContentTimeStamp.time} />
+          <ComputedTime label="generation time" date={dynamicTime} />
         </div>
       )}
       {data.dynamicContentGeoCoordinate && (
@@ -366,7 +409,7 @@ function DynamicContentDataSection({ data, dataFormat }: { data: UicDynamicConte
   );
 }
 
-function DecodedFcbSection({ entry, index }: { entry: DataSequenceEntry; index: number }) {
+function DecodedFcbSection({ entry, index, issuingDate }: { entry: DataSequenceEntry; index: number; issuingDate?: Date }) {
   const rt = entry.decoded;
   if (!rt) {
     return (
@@ -380,7 +423,7 @@ function DecodedFcbSection({ entry, index }: { entry: DataSequenceEntry; index: 
 
   return (
     <EmbeddedBlock label={`dataSequence[${index}] — ${entry.dataFormat}`}>
-      {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} />}
+      {rt.issuingDetail && <IssuingSection detail={rt.issuingDetail} issuingDate={issuingDate} />}
       {rt.travelerDetail && <TravelerSection detail={rt.travelerDetail} />}
       {rt.transportDocument && rt.transportDocument.length > 0 && (
         <TransportDocSection docs={rt.transportDocument} />
@@ -390,7 +433,7 @@ function DecodedFcbSection({ entry, index }: { entry: DataSequenceEntry; index: 
   );
 }
 
-function Level2DataSection({ l2Data }: { l2Data: Level2Data }) {
+function Level2DataSection({ l2Data, dynamicTime }: { l2Data: Level2Data; dynamicTime?: Date }) {
   if (!l2Data.decoded) {
     return (
       <Section title="level2Data">
@@ -402,16 +445,21 @@ function Level2DataSection({ l2Data }: { l2Data: Level2Data }) {
 
   // FDC1 = UicDynamicContentData
   if (l2Data.dataFormat === 'FDC1') {
-    return <DynamicContentDataSection data={l2Data.decoded as UicDynamicContentData} dataFormat={l2Data.dataFormat} />;
+    return <DynamicContentDataSection data={l2Data.decoded as UicDynamicContentData} dataFormat={l2Data.dataFormat} dynamicTime={dynamicTime} />;
   }
 
   // _RICS.ID1 = IntercodeDynamicData
-  return <IntercodeDynamicSection data={l2Data.decoded as IntercodeDynamicData} dataFormat={l2Data.dataFormat} />;
+  return <IntercodeDynamicSection data={l2Data.decoded as IntercodeDynamicData} dataFormat={l2Data.dataFormat} dynamicTime={dynamicTime} />;
 }
 
 export default function TicketView({ ticket }: Props) {
   const l2Signed = ticket.level2SignedData;
   const l1 = l2Signed.level1Data;
+
+  // Compute times from decoded ticket using library helpers
+  const issuingDate = getIssuingTime(ticket);
+  const endOfValidity = getEndOfValidityTime(ticket);
+  const dynamicTime = getDynamicContentTime(ticket);
 
   return (
     <div className="space-y-4">
@@ -424,11 +472,11 @@ export default function TicketView({ ticket }: Props) {
       <SignatureRegion label="level2SignedData" color="green">
         {/* Level 1 Signature Payload (level1Data) */}
         <SignatureRegion label="level1Data" color="blue">
-          <Level1DataSection l1={l1} />
+          <Level1DataSection l1={l1} endOfValidity={endOfValidity} />
 
           {/* dataSequence — decoded FCB blocks + other data blocks */}
           {l1.dataSequence.map((entry, i) => (
-            <DecodedFcbSection key={i} entry={entry} index={i} />
+            <DecodedFcbSection key={i} entry={entry} index={i} issuingDate={issuingDate} />
           ))}
         </SignatureRegion>
 
@@ -438,7 +486,7 @@ export default function TicketView({ ticket }: Props) {
         </Section>
 
         {/* level2Data — inside level2SignedData, outside level1Data */}
-        {l2Signed.level2Data && <Level2DataSection l2Data={l2Signed.level2Data} />}
+        {l2Signed.level2Data && <Level2DataSection l2Data={l2Signed.level2Data} dynamicTime={dynamicTime} />}
       </SignatureRegion>
 
       {/* level2Signature — outside level2SignedData */}
