@@ -762,6 +762,16 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
         {l2Enabled && (
           <>
+            {/* Level 1 Signature (read-only display) */}
+            {l1SigHex && (
+              <div>
+                <label className="text-xs text-gray-500">level1Signature</label>
+                <div className="w-full mt-0.5 px-2 py-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded text-gray-600 break-all max-h-16 overflow-y-auto">
+                  {l1SigHex}
+                </div>
+              </div>
+            )}
+
             {/* level2Data */}
             <ToggleSection
               title="level2Data"
