@@ -98,6 +98,55 @@ function utcDayOfYear(date: Date): number {
 const FIPS_TEST_KEY_1 = 'c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357';
 const FIPS_TEST_KEY_2 = '710735c8388f48c684a97bd66751cc5f5a122d6b9a96a2dbe73662f78217446d';
 
+// ---------------------------------------------------------------------------
+// OID select options and component
+// ---------------------------------------------------------------------------
+
+const KEY_ALG_OPTIONS = [
+  { oid: '1.2.840.10045.3.1.7', name: 'P-256' },
+  { oid: '1.3.132.0.34', name: 'P-384' },
+  { oid: '1.3.132.0.35', name: 'P-521' },
+  { oid: '1.2.840.113549.1.1.1', name: 'RSA' },
+];
+
+const SIGNING_ALG_OPTIONS = [
+  { oid: '1.2.840.10045.4.3.2', name: 'ECDSA-SHA256' },
+  { oid: '1.2.840.10045.4.3.3', name: 'ECDSA-SHA384' },
+  { oid: '1.2.840.10045.4.3.4', name: 'ECDSA-SHA512' },
+  { oid: '2.16.840.1.101.3.4.3.1', name: 'DSA-SHA224' },
+  { oid: '2.16.840.1.101.3.4.3.2', name: 'DSA-SHA256' },
+  { oid: '1.2.840.113549.1.1.11', name: 'RSA-SHA256' },
+];
+
+function OidSelectField({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { oid: string; name: string }[];
+  onChange: (oid: string) => void;
+}) {
+  return (
+    <div>
+      <label className="text-xs text-gray-500">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full mt-0.5 px-2 py-1 text-xs border border-gray-300 rounded bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+      >
+        {options.map((o) => (
+          <option key={o.oid} value={o.oid}>
+            {o.oid} ({o.name})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 interface Props {
   onDecode: (hex: string) => void;
   onControl: (hex: string) => void;
@@ -221,6 +270,16 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   const [l2PrivKey, setL2PrivKey] = useState('');
   const [l2PubKey, setL2PubKey] = useState('');
 
+  // Prefill-sourced L2 public key (shown when no L2 private key is loaded)
+  const [prefillL2PubKeyHex, setPrefillL2PubKeyHex] = useState('');
+  const effectiveL2PubKeyHex = l2PubKey || prefillL2PubKeyHex;
+
+  // OID state (editable, auto-filled from curve selection)
+  const [l1KeyAlg, setL1KeyAlg] = useState(CURVES['P-256'].keyAlgOid);
+  const [l1SigningAlg, setL1SigningAlg] = useState(CURVES['P-256'].sigAlgOid);
+  const [l2KeyAlg, setL2KeyAlg] = useState(CURVES['P-256'].keyAlgOid);
+  const [l2SigningAlg, setL2SigningAlg] = useState(CURVES['P-256'].sigAlgOid);
+
   // Level 2 signature state
   const [l2SigHex, setL2SigHex] = useState('');
   const [l2SigStale, setL2SigStale] = useState(false);
@@ -244,6 +303,10 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
     l1Curve: string;
     l2PrivKey: string;
     l2Curve: string;
+    l1KeyAlg: string;
+    l1SigningAlg: string;
+    l2KeyAlg: string;
+    l2SigningAlg: string;
   } | null>(null);
 
   // -------------------------------------------------------------------------
@@ -257,12 +320,29 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
     if (l2SigHex) setL2SigStale(true);
   }, [l1SigHex, l2SigHex]);
 
-  // Also mark sigs stale when key/curve changes (affects OIDs in signed data)
+  // Auto-sync OIDs from curve selection
+  useEffect(() => {
+    const cfg = CURVES[l1Curve as CurveName];
+    if (cfg) {
+      setL1KeyAlg(cfg.keyAlgOid);
+      setL1SigningAlg(cfg.sigAlgOid);
+    }
+  }, [l1Curve]);
+
+  useEffect(() => {
+    const cfg = CURVES[l2Curve as CurveName];
+    if (cfg) {
+      setL2KeyAlg(cfg.keyAlgOid);
+      setL2SigningAlg(cfg.sigAlgOid);
+    }
+  }, [l2Curve]);
+
+  // Also mark sigs stale when key/curve/OID changes (affects signed data)
   useEffect(() => {
     if (l1SigHex) setL1SigStale(true);
     if (l2SigHex) setL2SigStale(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [l1Curve, l2Curve, l2Enabled]);
+  }, [l1Curve, l2Curve, l2Enabled, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg, effectiveL2PubKeyHex]);
 
   // -------------------------------------------------------------------------
   // Apply prefill from decoded ticket
@@ -271,9 +351,20 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   useEffect(() => {
     if (prefillInput) {
       setInput(prefillInput);
-      // Enable L2 if prefill has dynamic data
-      if (prefillInput.dynamicData || prefillInput.dynamicContentData) {
+      // Enable L2 if prefill has dynamic data or L2 fields
+      if (prefillInput.dynamicData || prefillInput.dynamicContentData || prefillInput.level2PublicKey) {
         setL2Enabled(true);
+      }
+      // Populate OID state from prefilled input
+      if (prefillInput.level1KeyAlg) setL1KeyAlg(prefillInput.level1KeyAlg);
+      if (prefillInput.level1SigningAlg) setL1SigningAlg(prefillInput.level1SigningAlg);
+      if (prefillInput.level2KeyAlg) setL2KeyAlg(prefillInput.level2KeyAlg);
+      if (prefillInput.level2SigningAlg) setL2SigningAlg(prefillInput.level2SigningAlg);
+      // Populate L2 public key from prefill (shown even without an L2 private key)
+      if (prefillInput.level2PublicKey && prefillInput.level2PublicKey.length > 0) {
+        setPrefillL2PubKeyHex(bytesToHex(prefillInput.level2PublicKey));
+      } else {
+        setPrefillL2PubKeyHex('');
       }
       // Populate signatures from prefilled input if present
       if (prefillInput.level1Signature && prefillInput.level1Signature.length > 0) {
@@ -297,22 +388,20 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // -------------------------------------------------------------------------
 
   const buildPreparedInput = useCallback((): UicBarcodeTicketInput => {
-    const l1CurveConfig = CURVES[l1Curve as CurveName];
     const prepared: UicBarcodeTicketInput = {
       ...input,
-      level1KeyAlg: l1CurveConfig.keyAlgOid,
-      level1SigningAlg: l1CurveConfig.sigAlgOid,
+      level1KeyAlg: l1KeyAlg,
+      level1SigningAlg: l1SigningAlg,
     };
 
-    if (l2Enabled && l2PubKey) {
-      const l2CurveConfig = CURVES[l2Curve as CurveName];
-      prepared.level2KeyAlg = l2CurveConfig.keyAlgOid;
-      prepared.level2SigningAlg = l2CurveConfig.sigAlgOid;
-      prepared.level2PublicKey = hexToBytes(l2PubKey);
+    if (l2Enabled && effectiveL2PubKeyHex) {
+      prepared.level2KeyAlg = l2KeyAlg;
+      prepared.level2SigningAlg = l2SigningAlg;
+      prepared.level2PublicKey = hexToBytes(effectiveL2PubKeyHex);
     }
 
     return prepared;
-  }, [input, l1Curve, l2Enabled, l2Curve, l2PubKey]);
+  }, [input, l1KeyAlg, l1SigningAlg, l2Enabled, l2KeyAlg, l2SigningAlg, effectiveL2PubKeyHex]);
 
   // -------------------------------------------------------------------------
   // Generate Level 1 signature
@@ -374,7 +463,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
       // Start dynamic refresh countdown if enabled
       if (l2Enabled && dynamicRefreshEnabled && (input.dynamicData || input.dynamicContentData) && l1PrivKey && l2PrivKey) {
-        regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
+        regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
         setCountdown(dynamicRefreshInterval);
       } else {
         regenRef.current = null;
@@ -385,7 +474,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
       setBytes(new Uint8Array());
       setEncodeError(e instanceof Error ? e.message : 'Encode failed');
     }
-  }, [buildPreparedInput, l1SigHex, l2SigHex, l2Enabled, dynamicRefreshEnabled, input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, dynamicRefreshInterval]);
+  }, [buildPreparedInput, l1SigHex, l2SigHex, l2Enabled, dynamicRefreshEnabled, input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg, dynamicRefreshInterval]);
 
   // -------------------------------------------------------------------------
   // Dynamic content refresh (re-signs and re-encodes periodically)
@@ -460,14 +549,12 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
               window.history.replaceState(null, '', `#encode&hex=${refreshedHex}`);
               // Update signature fields to match
               // Extract the sigs from the signed output by re-signing
-              const l1CurveConfig = CURVES[params.l1Curve as CurveName];
-              const l2CurveConfig = CURVES[params.l2Curve as CurveName];
               const prepInput: UicBarcodeTicketInput = {
                 ...updatedInput,
-                level1KeyAlg: l1CurveConfig.keyAlgOid,
-                level1SigningAlg: l1CurveConfig.sigAlgOid,
-                level2KeyAlg: l2CurveConfig.keyAlgOid,
-                level2SigningAlg: l2CurveConfig.sigAlgOid,
+                level1KeyAlg: params.l1KeyAlg,
+                level1SigningAlg: params.l1SigningAlg,
+                level2KeyAlg: params.l2KeyAlg,
+                level2SigningAlg: params.l2SigningAlg,
                 level2PublicKey: level2Key.publicKey,
               };
               const l1Sig = signLevel1Data(prepInput, params.l1PrivKey, params.l1Curve);
@@ -494,9 +581,9 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // Update regeneration params when input or keys change (while regeneration is active)
   useEffect(() => {
     if (regenRef.current) {
-      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve };
+      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
     }
-  }, [input, l1PrivKey, l1Curve, l2PrivKey, l2Curve]);
+  }, [input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg]);
 
   // Stop regeneration when L2 is disabled or dynamic refresh is turned off
   useEffect(() => {
@@ -548,14 +635,12 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   return (
     <div className="space-y-6">
       {/* ================================================================= */}
-      {/* LEVEL 1 SECTION                                                   */}
+      {/* KEYS SECTION                                                      */}
       {/* ================================================================= */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
         <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
-          Level 1
+          Keys
         </h3>
-
-        {/* Level 1 Key */}
         <KeyPairInput
           label="Level 1 Key"
           curve={l1Curve}
@@ -566,28 +651,81 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
           onPublicKeyChange={setL1PubKey}
           fipsTestKey={FIPS_TEST_KEY_1}
         />
+        <KeyPairInput
+          label="Level 2 Key"
+          curve={l2Curve}
+          onCurveChange={setL2Curve}
+          privateKeyHex={l2PrivKey}
+          onPrivateKeyChange={setL2PrivKey}
+          publicKeyHex={l2PubKey}
+          onPublicKeyChange={setL2PubKey}
+          fipsTestKey={FIPS_TEST_KEY_2}
+        />
+      </div>
+
+      {/* ================================================================= */}
+      {/* LEVEL 1 SECTION                                                   */}
+      {/* ================================================================= */}
+      <div className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">
+          Level 1
+        </h3>
 
         {/* Level 1 Data */}
         <TicketForm
           value={input}
           onChange={handleInputChange}
-        />
-
-        {/* Computed times */}
-        {(issuingTime || endOfValidity) && (
-          <div className="flex flex-wrap gap-x-6 gap-y-1 px-1 text-xs">
-            {issuingTime && (
-              <span className="text-gray-400">
-                issuing time: <ComputedTimeDisplay date={issuingTime} />
-              </span>
-            )}
-            {endOfValidity && (
-              <span className="text-gray-400">
+          renderAfterKeyId={
+            <>
+              <OidSelectField
+                label="level1KeyAlg"
+                value={l1KeyAlg}
+                options={KEY_ALG_OPTIONS}
+                onChange={setL1KeyAlg}
+              />
+              <OidSelectField
+                label="level1SigningAlg"
+                value={l1SigningAlg}
+                options={SIGNING_ALG_OPTIONS}
+                onChange={setL1SigningAlg}
+              />
+              <OidSelectField
+                label="level2KeyAlg"
+                value={l2KeyAlg}
+                options={KEY_ALG_OPTIONS}
+                onChange={setL2KeyAlg}
+              />
+              <OidSelectField
+                label="level2SigningAlg"
+                value={l2SigningAlg}
+                options={SIGNING_ALG_OPTIONS}
+                onChange={setL2SigningAlg}
+              />
+              {effectiveL2PubKeyHex && (
+                <div className="col-span-2">
+                  <label className="text-xs text-gray-500">level2PublicKey</label>
+                  <div className="w-full mt-0.5 px-2 py-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded text-gray-600 break-all">
+                    {effectiveL2PubKeyHex}
+                  </div>
+                </div>
+              )}
+            </>
+          }
+          renderAfterValidityFields={
+            endOfValidity && (
+              <div className="col-span-2 text-xs text-gray-400">
                 end of validity: <ComputedTimeDisplay date={endOfValidity} />
-              </span>
-            )}
-          </div>
-        )}
+              </div>
+            )
+          }
+          renderAfterIssuingFields={
+            issuingTime && (
+              <div className="col-span-2 text-xs text-gray-400">
+                issuing time: <ComputedTimeDisplay date={issuingTime} />
+              </div>
+            )
+          }
+        />
 
         {/* Level 1 Signature */}
         <SignatureSection
@@ -624,18 +762,6 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
         {l2Enabled && (
           <>
-            {/* Level 2 Key */}
-            <KeyPairInput
-              label="Level 2 Key"
-              curve={l2Curve}
-              onCurveChange={setL2Curve}
-              privateKeyHex={l2PrivKey}
-              onPrivateKeyChange={setL2PrivKey}
-              publicKeyHex={l2PubKey}
-              onPublicKeyChange={setL2PubKey}
-              fipsTestKey={FIPS_TEST_KEY_2}
-            />
-
             {/* level2Data */}
             <ToggleSection
               title="level2Data"

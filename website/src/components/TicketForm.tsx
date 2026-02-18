@@ -10,6 +10,9 @@ import type {
 interface Props {
   value: UicBarcodeTicketInput;
   onChange: (input: UicBarcodeTicketInput) => void;
+  renderAfterKeyId?: React.ReactNode;
+  renderAfterValidityFields?: React.ReactNode;
+  renderAfterIssuingFields?: React.ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -335,6 +338,9 @@ const RETAIL_CHANNELS = [
 export default function TicketForm({
   value,
   onChange,
+  renderAfterKeyId,
+  renderAfterValidityFields,
+  renderAfterIssuingFields,
 }: Props) {
   const update = (partial: Partial<UicBarcodeTicketInput>) => {
     onChange({ ...value, ...partial });
@@ -432,6 +438,7 @@ export default function TicketForm({
           onChange={(v) => update({ keyId: v })}
           placeholder="e.g. 1"
         />
+        {renderAfterKeyId}
         <OptionalNumberField
           label="endOfValidityYear"
           value={value.endOfValidityYear}
@@ -458,6 +465,7 @@ export default function TicketForm({
           onChange={(v) => update({ validityDuration: v })}
           placeholder="1-3600 (seconds)"
         />
+        {renderAfterValidityFields}
       </Section>
 
       {/* issuingDetail */}
@@ -532,6 +540,7 @@ export default function TicketForm({
             onChange={(v) => updateIssuing({ activated: v })}
           />
         </div>
+        {renderAfterIssuingFields}
       </Section>
 
       {/* intercodeIssuing */}
