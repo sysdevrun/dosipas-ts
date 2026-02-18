@@ -1,12 +1,19 @@
 import {
   decodeTicket,
   decodeTicketFromBytes,
+  encodeTicketToBytes,
   SOLEA_TICKET_HEX,
   CTS_TICKET_HEX,
   SAMPLE_TICKET_HEX,
   signLevel1,
   signLevel2,
   signAndEncodeTicket,
+  signPayload,
+  encodeLevel2Data,
+  encodeLevel1Data,
+  encodeLevel2SignedData,
+  encodeUicBarcode,
+  extractSignedData,
   generateKeyPair,
   getPublicKey,
   verifyLevel1Signature,
@@ -300,5 +307,257 @@ describe('signature verification on re-encoded tickets', () => {
 
     expect(l1Result.valid).toBe(true);
     expect(l2Result.valid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Composable primitives tests
+// ---------------------------------------------------------------------------
+
+describe('signPayload', () => {
+  it('produces a DER signature for arbitrary data', () => {
+    const data = new Uint8Array([1, 2, 3, 4, 5]);
+    const sig = signPayload(data, FIPS_L1_PRIV, 'P-256');
+
+    expect(sig).toBeInstanceOf(Uint8Array);
+    expect(sig[0]).toBe(0x30); // DER SEQUENCE tag
+  });
+});
+
+describe('encodeLevel1Data', () => {
+  it('produces bytes matching extractSignedData for Solea ticket', () => {
+    const input = decodedToInput(SOLEA_TICKET_HEX);
+    const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
+    const l1Curve = CURVES['P-256'];
+
+    // Encode level1Data with the new primitive (all fields from input)
+    const level1Raw = encodeLevel1Data({
+      headerVersion: input.headerVersion,
+      fcbVersion: input.fcbVersion,
+      securityProviderNum: input.securityProviderNum,
+      keyId: input.keyId,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      endOfValidityYear: input.endOfValidityYear,
+      endOfValidityDay: input.endOfValidityDay,
+      endOfValidityTime: input.endOfValidityTime,
+      validityDuration: input.validityDuration,
+      railTicket: input.railTicket,
+    });
+
+    // Encode via old path and extract level1DataBytes for comparison
+    const l1Sig = signLevel1(
+      { ...input, level1KeyAlg: l1Curve.keyAlgOid, level1SigningAlg: l1Curve.sigAlgOid },
+      l1Key.privateKey,
+      'P-256',
+    );
+    const fullBytes = encodeTicketToBytes({
+      ...input,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      level1Signature: l1Sig,
+      level2Signature: new Uint8Array(0),
+    });
+    const extracted = extractSignedData(fullBytes);
+
+    expect(level1Raw.data).toEqual(extracted.level1DataBytes);
+  });
+
+  it('produces bytes matching extractSignedData for CTS ticket', () => {
+    const input = decodedToInput(CTS_TICKET_HEX);
+    const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
+    const l1Curve = CURVES['P-256'];
+
+    const level1Raw = encodeLevel1Data({
+      headerVersion: input.headerVersion,
+      fcbVersion: input.fcbVersion,
+      securityProviderNum: input.securityProviderNum,
+      keyId: input.keyId,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      endOfValidityYear: input.endOfValidityYear,
+      endOfValidityDay: input.endOfValidityDay,
+      endOfValidityTime: input.endOfValidityTime,
+      validityDuration: input.validityDuration,
+      railTicket: input.railTicket,
+    });
+
+    const l1Sig = signLevel1(
+      { ...input, level1KeyAlg: l1Curve.keyAlgOid, level1SigningAlg: l1Curve.sigAlgOid },
+      l1Key.privateKey,
+      'P-256',
+    );
+    const fullBytes = encodeTicketToBytes({
+      ...input,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      level1Signature: l1Sig,
+      level2Signature: new Uint8Array(0),
+    });
+    const extracted = extractSignedData(fullBytes);
+
+    expect(level1Raw.data).toEqual(extracted.level1DataBytes);
+  });
+});
+
+describe('composable flow end-to-end', () => {
+  it('produces a ticket with verifiable L1 and L2 signatures', async () => {
+    const input = decodedToInput(SOLEA_TICKET_HEX);
+    // Remove dynamic content so we use the new path
+    delete (input as any).dynamicData;
+    delete (input as any).dynamicContentData;
+
+    const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
+    const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
+    const l1Curve = CURVES['P-256'];
+    const l2Curve = CURVES['P-256'];
+
+    // Step 1: Encode level1Data
+    const level1Raw = encodeLevel1Data({
+      headerVersion: input.headerVersion,
+      fcbVersion: input.fcbVersion,
+      securityProviderNum: input.securityProviderNum,
+      keyId: input.keyId,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level2KeyAlg: l2Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      level2SigningAlg: l2Curve.sigAlgOid,
+      level2PublicKey: l2Key.publicKey,
+      railTicket: input.railTicket,
+    });
+
+    // Step 2: Sign level1Data
+    const level1Sig = signPayload(level1Raw.data, l1Key.privateKey, 'P-256');
+
+    // Step 3: Encode level2SignedData
+    const level2Raw = encodeLevel2SignedData({
+      headerVersion: input.headerVersion,
+      level1Data: level1Raw,
+      level1Signature: level1Sig,
+    });
+
+    // Step 4: Sign level2SignedData
+    const level2Sig = signPayload(level2Raw.data, l2Key.privateKey, 'P-256');
+
+    // Step 5: Encode final barcode
+    const barcode = encodeUicBarcode({
+      format: `U${input.headerVersion ?? 2}`,
+      level2SignedData: level2Raw,
+      level2Signature: level2Sig,
+    });
+
+    // Verify the result decodes correctly
+    const decoded = decodeTicketFromBytes(barcode);
+    expect(decoded.format).toBe('U2');
+    expect(decoded.level2SignedData.level1Data.dataSequence).toHaveLength(1);
+
+    // Verify signatures
+    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    expect(l1Result.valid).toBe(true);
+
+    const l2Result = await verifyLevel2Signature(barcode);
+    expect(l2Result.valid).toBe(true);
+  });
+
+  it('produces a ticket with FDC1 dynamic content and verifiable signatures', async () => {
+    const input = decodedToInput(SOLEA_TICKET_HEX);
+    // Solea ticket has FDC1 dynamic content
+    expect(input.dynamicContentData).toBeDefined();
+
+    const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
+    const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
+    const l1Curve = CURVES['P-256'];
+    const l2Curve = CURVES['P-256'];
+
+    // Step 1: Encode level1Data
+    const level1Raw = encodeLevel1Data({
+      headerVersion: input.headerVersion,
+      fcbVersion: input.fcbVersion,
+      securityProviderNum: input.securityProviderNum,
+      keyId: input.keyId,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level2KeyAlg: l2Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      level2SigningAlg: l2Curve.sigAlgOid,
+      level2PublicKey: l2Key.publicKey,
+      railTicket: input.railTicket,
+    });
+
+    // Step 2: Sign level1Data
+    const level1Sig = signPayload(level1Raw.data, l1Key.privateKey, 'P-256');
+
+    // Step 3: Encode level2Data (FDC1)
+    const level2Data = encodeLevel2Data(input.dynamicContentData!);
+    expect(level2Data.dataFormat).toBe('FDC1');
+
+    // Step 4: Encode level2SignedData with level2Data
+    const level2Raw = encodeLevel2SignedData({
+      headerVersion: input.headerVersion,
+      level1Data: level1Raw,
+      level1Signature: level1Sig,
+      level2Data,
+    });
+
+    // Step 5: Sign level2SignedData
+    const level2Sig = signPayload(level2Raw.data, l2Key.privateKey, 'P-256');
+
+    // Step 6: Encode final barcode
+    const barcode = encodeUicBarcode({
+      format: `U${input.headerVersion ?? 2}`,
+      level2SignedData: level2Raw,
+      level2Signature: level2Sig,
+    });
+
+    // Verify the result decodes correctly with FDC1 data
+    const decoded = decodeTicketFromBytes(barcode);
+    expect(decoded.format).toBe('U2');
+    expect(decoded.level2SignedData.level2Data).toBeDefined();
+    expect(decoded.level2SignedData.level2Data!.dataFormat).toBe('FDC1');
+    expect(decoded.level2SignedData.level2Data!.decoded).toBeDefined();
+
+    // Verify signatures
+    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    expect(l1Result.valid).toBe(true);
+
+    const l2Result = await verifyLevel2Signature(barcode);
+    expect(l2Result.valid).toBe(true);
+  });
+
+  it('produces a static barcode with verifiable L1 signature', async () => {
+    const input = decodedToInput(CTS_TICKET_HEX);
+    delete (input as any).dynamicData;
+    delete (input as any).dynamicContentData;
+
+    const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
+    const l1Curve = CURVES['P-256'];
+
+    const level1Raw = encodeLevel1Data({
+      headerVersion: input.headerVersion,
+      fcbVersion: input.fcbVersion,
+      securityProviderNum: input.securityProviderNum,
+      keyId: input.keyId,
+      level1KeyAlg: l1Curve.keyAlgOid,
+      level1SigningAlg: l1Curve.sigAlgOid,
+      railTicket: input.railTicket,
+    });
+
+    const level1Sig = signPayload(level1Raw.data, l1Key.privateKey, 'P-256');
+
+    const level2Raw = encodeLevel2SignedData({
+      headerVersion: input.headerVersion,
+      level1Data: level1Raw,
+      level1Signature: level1Sig,
+    });
+
+    const barcode = encodeUicBarcode({
+      format: `U${input.headerVersion ?? 2}`,
+      level2SignedData: level2Raw,
+    });
+
+    const decoded = decodeTicketFromBytes(barcode);
+    expect(decoded.format).toBe('U2');
+
+    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    expect(l1Result.valid).toBe(true);
   });
 });
