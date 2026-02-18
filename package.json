@@ -1,6 +1,6 @@
 {
   "name": "dosipas-ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "UIC barcode ticket encoder/decoder/verifier with Intercode 6 extensions",
   "type": "module",
   "exports": {
@@ -30,6 +30,14 @@
   ],
   "author": "Théophile Helleboid <contact@sys-dev-run.fr>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sysdevrun/dosipas-ts.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sysdevrun/dosipas-ts/issues"
+  },
+  "homepage": "https://github.com/sysdevrun/dosipas-ts#readme",
   "engines": {
     "node": ">=20"
   },
