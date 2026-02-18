@@ -397,6 +397,67 @@ export interface TransportDocumentInput {
 }
 
 // ---------------------------------------------------------------------------
+// Composable encoding input types
+// ---------------------------------------------------------------------------
+
+/** Input for encoding the level1Data SEQUENCE in isolation. */
+export interface Level1DataInput {
+  /** Header version (1 or 2). Default: 2. */
+  headerVersion?: number;
+  /** FCB version (1, 2 or 3). Default: 2. */
+  fcbVersion?: number;
+  /** RICS code of the security provider. */
+  securityProviderNum?: number;
+  /** Key ID for signature verification. */
+  keyId?: number;
+  /** Level 1 key algorithm OID. */
+  level1KeyAlg?: string;
+  /** Level 2 key algorithm OID. */
+  level2KeyAlg?: string;
+  /** Level 1 signing algorithm OID. */
+  level1SigningAlg?: string;
+  /** Level 2 signing algorithm OID. */
+  level2SigningAlg?: string;
+  /** Level 2 public key bytes. */
+  level2PublicKey?: Uint8Array;
+  /** End of validity year (2016-2269, v2 header only). */
+  endOfValidityYear?: number;
+  /** End of validity day (1-366). */
+  endOfValidityDay?: number;
+  /** End of validity time in minutes (0-1439). */
+  endOfValidityTime?: number;
+  /** Validity duration in seconds (1-3600). */
+  validityDuration?: number;
+  /** The rail ticket data to encode. */
+  railTicket: RailTicketInput;
+}
+
+/**
+ * Input for encoding the level2SignedData SEQUENCE.
+ * Uses pre-encoded RawBytes from asn1-per-ts for level1Data passthrough.
+ */
+export interface Level2SignedDataInput {
+  /** Header version (1 or 2). Default: 2. */
+  headerVersion?: number;
+  /** Pre-encoded level1Data bytes (from encodeLevel1Data). */
+  level1Data: import('asn1-per-ts').RawBytes;
+  /** Level 1 DER signature bytes. */
+  level1Signature: Uint8Array;
+  /** Optional level 2 data block. */
+  level2Data?: { dataFormat: string; data: Uint8Array };
+}
+
+/** Input for encoding the outermost UicBarcodeHeader. */
+export interface UicBarcodeInput {
+  /** Header format string ("U1" or "U2"). */
+  format: string;
+  /** Pre-encoded level2SignedData bytes (from encodeLevel2SignedData). */
+  level2SignedData: import('asn1-per-ts').RawBytes;
+  /** Level 2 DER signature bytes. */
+  level2Signature?: Uint8Array;
+}
+
+// ---------------------------------------------------------------------------
 // Ticket control types
 // ---------------------------------------------------------------------------
 
