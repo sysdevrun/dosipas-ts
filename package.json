@@ -44,7 +44,7 @@
   "dependencies": {
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
-    "asn1-per-ts": "^1.0.0"
+    "asn1-per-ts": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "^25.2.3",

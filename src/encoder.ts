@@ -8,10 +8,9 @@ import {
   SchemaCodec,
   SchemaBuilder,
   BitBuffer,
-  RawBytes,
   type SchemaNode,
 } from 'asn1-per-ts';
-import type { Codec } from 'asn1-per-ts';
+import type { Codec, RawBytes } from 'asn1-per-ts';
 import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
 import type {
   UicBarcodeTicketInput,
@@ -237,9 +236,7 @@ export function encodeLevel1Data(input: Level1DataInput): RawBytes {
   };
 
   const codec = getLevel1DataCodec(headerVersion);
-  const buf = BitBuffer.alloc();
-  codec.codec.encode(buf, level1Data);
-  return new RawBytes(buf.toUint8Array(), buf.bitLength);
+  return codec.encodeToRawBytes(level1Data);
 }
 
 /**
@@ -259,9 +256,7 @@ export function encodeLevel2SignedData(input: Level2SignedDataInput): RawBytes {
   };
 
   const codec = getLevel2DataCodec(headerVersion);
-  const buf = BitBuffer.alloc();
-  codec.codec.encode(buf, level2SignedData);
-  return new RawBytes(buf.toUint8Array(), buf.bitLength);
+  return codec.encodeToRawBytes(level2SignedData);
 }
 
 /**
@@ -284,9 +279,7 @@ export function encodeUicBarcode(input: UicBarcodeInput): Uint8Array {
   };
 
   const codec = getHeaderCodec(headerVersion);
-  const buf = BitBuffer.alloc();
-  codec.codec.encode(buf, headerData);
-  return buf.toUint8Array();
+  return codec.encode(headerData);
 }
 
 // ---------------------------------------------------------------------------
