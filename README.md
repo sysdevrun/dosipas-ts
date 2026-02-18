@@ -1,3 +1,5 @@
+[![npm version](https://img.shields.io/npm/v/dosipas-ts)](https://www.npmjs.com/package/dosipas-ts)
+
 # dosipas-ts
 
 > **[Try the online playground](https://sysdevrun.github.io/dosipas-ts/)** — decode, encode, sign, verify, and control UIC barcode tickets in your browser.
