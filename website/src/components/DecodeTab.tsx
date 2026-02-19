@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { UicBarcodeTicketInput } from 'dosipas-ts';
+import type { UicBarcodeTicket } from 'dosipas-ts';
 import HexInput from './HexInput';
 import TicketView from './TicketView';
 import SignatureStatus from './SignatureStatus';
@@ -7,12 +7,11 @@ import JsonTree from './JsonTree';
 import HexViewer from './HexViewer';
 import CameraScanner from './CameraScanner';
 import { useTicketDecode } from '../hooks/useTicketDecode';
-import { ticketToInput } from '../lib/convert';
 
 interface Props {
   initialHex: string;
   onHexChange: (hex: string) => void;
-  onEditInEncoder: (input: UicBarcodeTicketInput) => void;
+  onEditInEncoder: (ticket: UicBarcodeTicket) => void;
   onControl: (hex: string) => void;
 }
 
@@ -46,12 +45,7 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
 
   const handleEditInEncoder = () => {
     if (!ticket) return;
-    try {
-      const input = ticketToInput(ticket);
-      onEditInEncoder(input);
-    } catch (e) {
-      alert(`Cannot convert: ${e instanceof Error ? e.message : e}`);
-    }
+    onEditInEncoder(ticket);
   };
 
   return (

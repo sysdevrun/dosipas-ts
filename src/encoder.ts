@@ -1,7 +1,7 @@
 /**
  * Encoder for UIC barcode tickets with Intercode 6 extensions.
  *
- * Encodes a {@link UicBarcodeTicketInput} object into a hex string suitable
+ * Encodes a {@link UicBarcodeTicket} object into a hex string suitable
  * for embedding in an Aztec barcode.
  */
 import {
@@ -13,15 +13,12 @@ import {
 import type { Codec, RawBytes } from 'asn1-per-ts';
 import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
 import type {
-  UicBarcodeTicketInput,
-  Level1DataInput,
-  Level2SignedDataInput,
-  UicBarcodeInput,
-  IssuingDetailInput,
-  IntercodeIssuingDataInput,
-  IntercodeDynamicDataInput,
-  UicDynamicContentDataInput,
-  TransportDocumentInput,
+  UicBarcodeTicket,
+  Level1Data,
+  Level2Data,
+  UicRailTicketData,
+  UicDynamicContentData,
+  IntercodeDynamicData,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -95,8 +92,20 @@ function getFdc1Codec(): SchemaCodec {
   return fdc1Codec;
 }
 
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+function parseHeaderVersion(format: string): number {
+  const match = format.match(/^U(\d+)$/);
+  if (!match) throw new Error(`Invalid format "${format}", expected "U1" or "U2"`);
+  return parseInt(match[1], 10);
+}
+
+function parseFcbVersion(dataFormat: string): number {
+  const match = dataFormat.match(/^FCB(\d+)$/);
+  if (!match) throw new Error(`Unsupported dataFormat "${dataFormat}"`);
+  return parseInt(match[1], 10);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,54 +115,63 @@ function toHex(bytes: Uint8Array): string {
 /**
  * Encode a UIC barcode ticket to a hex string.
  *
- * @param input - The ticket data to encode.
+ * @param ticket - The decoded ticket structure to encode.
  * @returns Hex string of the encoded barcode payload.
  */
-export function encodeTicket(input: UicBarcodeTicketInput): string {
-  const headerVersion = input.headerVersion ?? 2;
-  const fcbVersion = input.fcbVersion ?? 2;
+export function encodeTicket(ticket: UicBarcodeTicket): string {
+  const headerVersion = parseHeaderVersion(ticket.format);
+  const l1 = ticket.level2SignedData.level1Data;
 
-  // Step 1: Encode the rail ticket data
-  const railTicketBytes = encodeRailTicket(fcbVersion, input);
+  // Encode each data sequence entry
+  const dataSequence = l1.dataSequence.map(entry => {
+    if (entry.data) return { dataFormat: entry.dataFormat, data: entry.data };
+    if (!entry.decoded) throw new Error('DataSequenceEntry must have data or decoded');
+    const fcbVersion = parseFcbVersion(entry.dataFormat);
+    return {
+      dataFormat: entry.dataFormat,
+      data: encodeRailTicket(fcbVersion, entry.decoded, l1.securityProviderNum),
+    };
+  });
 
-  // Step 2: Build the data sequence
-  const dataSequence: Array<{ dataFormat: string; data: Uint8Array }> = [
-    { dataFormat: `FCB${fcbVersion}`, data: railTicketBytes },
-  ];
-
-  // Step 3: Build Level 2 data (Intercode dynamic or FDC1)
+  // Encode level2Data if present
   let level2Data: { dataFormat: string; data: Uint8Array } | undefined;
-  if (input.dynamicContentData) {
-    level2Data = encodeLevel2Data(input.dynamicContentData);
-  } else if (input.dynamicData) {
-    level2Data = encodeLevel2Data(input.dynamicData);
+  const l2 = ticket.level2SignedData.level2Data;
+  if (l2) {
+    if (l2.data) {
+      level2Data = { dataFormat: l2.dataFormat, data: l2.data };
+    } else if (l2.decoded) {
+      level2Data = {
+        dataFormat: l2.dataFormat,
+        data: encodeLevel2DataDecoded(l2.dataFormat, l2.decoded),
+      };
+    }
   }
 
-  // Step 4: Build the full header structure
+  // Build the full header structure
   const headerData: Record<string, unknown> = {
-    format: `U${headerVersion}`,
+    format: ticket.format,
     level2SignedData: {
       level1Data: {
-        securityProviderNum: input.securityProviderNum,
-        keyId: input.keyId,
+        securityProviderNum: l1.securityProviderNum,
+        securityProviderIA5: l1.securityProviderIA5,
+        keyId: l1.keyId,
         dataSequence,
-        level1KeyAlg: input.level1KeyAlg,
-        level2KeyAlg: input.level2KeyAlg,
-        level1SigningAlg: input.level1SigningAlg,
-        level2SigningAlg: input.level2SigningAlg,
-        level2PublicKey: input.level2PublicKey,
-        endOfValidityYear: input.endOfValidityYear,
-        endOfValidityDay: input.endOfValidityDay,
-        endOfValidityTime: input.endOfValidityTime,
-        validityDuration: input.validityDuration,
+        level1KeyAlg: l1.level1KeyAlg,
+        level2KeyAlg: l1.level2KeyAlg,
+        level1SigningAlg: l1.level1SigningAlg,
+        level2SigningAlg: l1.level2SigningAlg,
+        level2PublicKey: l1.level2PublicKey,
+        endOfValidityYear: l1.endOfValidityYear,
+        endOfValidityDay: l1.endOfValidityDay,
+        endOfValidityTime: l1.endOfValidityTime,
+        validityDuration: l1.validityDuration,
       },
-      level1Signature: input.level1Signature,
+      level1Signature: ticket.level2SignedData.level1Signature,
       level2Data,
     },
-    level2Signature: input.level2Signature,
+    level2Signature: ticket.level2Signature,
   };
 
-  // Step 5: Encode the header
   const codec = getHeaderCodec(headerVersion);
   return codec.encodeToHex(headerData);
 }
@@ -161,11 +179,11 @@ export function encodeTicket(input: UicBarcodeTicketInput): string {
 /**
  * Encode a UIC barcode ticket to bytes.
  *
- * @param input - The ticket data to encode.
+ * @param ticket - The decoded ticket structure to encode.
  * @returns Uint8Array of the encoded barcode payload.
  */
-export function encodeTicketToBytes(input: UicBarcodeTicketInput): Uint8Array {
-  const hex = encodeTicket(input);
+export function encodeTicketToBytes(ticket: UicBarcodeTicket): Uint8Array {
+  const hex = encodeTicket(ticket);
   return new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
 }
 
@@ -174,34 +192,23 @@ export function encodeTicketToBytes(input: UicBarcodeTicketInput): Uint8Array {
 // ---------------------------------------------------------------------------
 
 /**
- * Encode a Level 2 data block (FDC1 or Intercode dynamic data).
+ * Encode a Level 2 data block from a {@link Level2Data} structure.
  *
- * Uses a type discriminant (`'rics' in input`) to distinguish Intercode
- * dynamic data from UIC FDC1 dynamic content data.
+ * If the `data` field is present, it is used as-is. Otherwise the `decoded`
+ * field is PER-encoded based on the `dataFormat`.
  *
- * @param input - FDC1 or Intercode dynamic data to encode.
+ * @param l2Data - Level 2 data with either raw `data` or `decoded` content.
  * @returns Object with `dataFormat` string and encoded `data` bytes.
  */
 export function encodeLevel2Data(
-  input: UicDynamicContentDataInput | IntercodeDynamicDataInput,
+  l2Data: Level2Data,
 ): { dataFormat: string; data: Uint8Array } {
-  if ('rics' in input) {
-    // Intercode dynamic data
-    const dynamicBytes = getIntercodeDynamicCodec().encode({
-      dynamicContentDay: input.dynamicContentDay ?? 0,
-      dynamicContentTime: input.dynamicContentTime,
-      dynamicContentUTCOffset: input.dynamicContentUTCOffset,
-      dynamicContentDuration: input.dynamicContentDuration,
-    });
-    return {
-      dataFormat: `_${input.rics}.ID1`,
-      data: dynamicBytes,
-    };
-  } else {
-    // FDC1 dynamic content data
-    const fdc1Bytes = getFdc1Codec().encode(input);
-    return { dataFormat: 'FDC1', data: fdc1Bytes };
-  }
+  if (l2Data.data) return { dataFormat: l2Data.dataFormat, data: l2Data.data };
+  if (!l2Data.decoded) throw new Error('Level2Data must have data or decoded');
+  return {
+    dataFormat: l2Data.dataFormat,
+    data: encodeLevel2DataDecoded(l2Data.dataFormat, l2Data.decoded),
+  };
 }
 
 /**
@@ -210,33 +217,42 @@ export function encodeLevel2Data(
  * Returns a {@link RawBytes} with the exact PER-encoded bits. The `.data`
  * property gives the `Uint8Array` suitable for signing; the `RawBytes` itself
  * is passed to {@link encodeLevel2SignedData} for bit-precise embedding.
+ *
+ * @param level1Data - The Level 1 data to encode.
+ * @param format - Header format string (e.g. "U1" or "U2").
  */
-export function encodeLevel1Data(input: Level1DataInput): RawBytes {
-  const headerVersion = input.headerVersion ?? 2;
-  const fcbVersion = input.fcbVersion ?? 2;
+export function encodeLevel1Data(level1Data: Level1Data, format: string): RawBytes {
+  const headerVersion = parseHeaderVersion(format);
 
-  const railTicketBytes = encodeRailTicket(fcbVersion, input);
-  const dataSequence: Array<{ dataFormat: string; data: Uint8Array }> = [
-    { dataFormat: `FCB${fcbVersion}`, data: railTicketBytes },
-  ];
+  // Encode each data sequence entry
+  const dataSequence = level1Data.dataSequence.map(entry => {
+    if (entry.data) return { dataFormat: entry.dataFormat, data: entry.data };
+    if (!entry.decoded) throw new Error('DataSequenceEntry must have data or decoded');
+    const fcbVersion = parseFcbVersion(entry.dataFormat);
+    return {
+      dataFormat: entry.dataFormat,
+      data: encodeRailTicket(fcbVersion, entry.decoded, level1Data.securityProviderNum),
+    };
+  });
 
-  const level1Data: Record<string, unknown> = {
-    securityProviderNum: input.securityProviderNum,
-    keyId: input.keyId,
+  const l1Data: Record<string, unknown> = {
+    securityProviderNum: level1Data.securityProviderNum,
+    securityProviderIA5: level1Data.securityProviderIA5,
+    keyId: level1Data.keyId,
     dataSequence,
-    level1KeyAlg: input.level1KeyAlg,
-    level2KeyAlg: input.level2KeyAlg,
-    level1SigningAlg: input.level1SigningAlg,
-    level2SigningAlg: input.level2SigningAlg,
-    level2PublicKey: input.level2PublicKey,
-    endOfValidityYear: input.endOfValidityYear,
-    endOfValidityDay: input.endOfValidityDay,
-    endOfValidityTime: input.endOfValidityTime,
-    validityDuration: input.validityDuration,
+    level1KeyAlg: level1Data.level1KeyAlg,
+    level2KeyAlg: level1Data.level2KeyAlg,
+    level1SigningAlg: level1Data.level1SigningAlg,
+    level2SigningAlg: level1Data.level2SigningAlg,
+    level2PublicKey: level1Data.level2PublicKey,
+    endOfValidityYear: level1Data.endOfValidityYear,
+    endOfValidityDay: level1Data.endOfValidityDay,
+    endOfValidityTime: level1Data.endOfValidityTime,
+    validityDuration: level1Data.validityDuration,
   };
 
   const codec = getLevel1DataCodec(headerVersion);
-  return codec.encodeToRawBytes(level1Data);
+  return codec.encodeToRawBytes(l1Data);
 }
 
 /**
@@ -246,7 +262,12 @@ export function encodeLevel1Data(input: Level1DataInput): RawBytes {
  * passthrough. Returns a `RawBytes` for signing and embedding into
  * {@link encodeUicBarcode}.
  */
-export function encodeLevel2SignedData(input: Level2SignedDataInput): RawBytes {
+export function encodeLevel2SignedData(input: {
+  headerVersion?: number;
+  level1Data: RawBytes;
+  level1Signature: Uint8Array;
+  level2Data?: { dataFormat: string; data: Uint8Array };
+}): RawBytes {
   const headerVersion = input.headerVersion ?? 2;
 
   const level2SignedData: Record<string, unknown> = {
@@ -265,12 +286,12 @@ export function encodeLevel2SignedData(input: Level2SignedDataInput): RawBytes {
  * Embeds pre-encoded `level2SignedData` bytes verbatim via {@link RawBytes}
  * passthrough. Returns the final barcode payload bytes.
  */
-export function encodeUicBarcode(input: UicBarcodeInput): Uint8Array {
-  const headerVersionMatch = input.format.match(/^U(\d+)$/);
-  if (!headerVersionMatch) {
-    throw new Error(`Invalid format "${input.format}", expected "U1" or "U2"`);
-  }
-  const headerVersion = parseInt(headerVersionMatch[1], 10);
+export function encodeUicBarcode(input: {
+  format: string;
+  level2SignedData: RawBytes;
+  level2Signature?: Uint8Array;
+}): Uint8Array {
+  const headerVersion = parseHeaderVersion(input.format);
 
   const headerData: Record<string, unknown> = {
     format: input.format,
@@ -286,50 +307,53 @@ export function encodeUicBarcode(input: UicBarcodeInput): Uint8Array {
 // Internal encoding helpers
 // ---------------------------------------------------------------------------
 
-function encodeRailTicket(fcbVersion: number, input: Pick<UicBarcodeTicketInput, 'securityProviderNum' | 'railTicket'>): Uint8Array {
-  const iss = input.railTicket.issuingDetail;
+/**
+ * Encode the decoded content of a Level 2 data block.
+ */
+function encodeLevel2DataDecoded(
+  dataFormat: string,
+  decoded: UicDynamicContentData | IntercodeDynamicData,
+): Uint8Array {
+  if (dataFormat === 'FDC1') {
+    return getFdc1Codec().encode(decoded);
+  } else {
+    // Intercode dynamic data
+    return getIntercodeDynamicCodec().encode(decoded);
+  }
+}
 
-  // Build extension if intercode issuing data present
-  let extension: { extensionId: string; extensionData: Uint8Array } | undefined;
-  if (iss.intercodeIssuing) {
-    const rics = iss.securityProviderNum ?? input.securityProviderNum ?? 0;
-    const issuingBytes = getIntercodeIssuingCodec().encode({
-      intercodeVersion: iss.intercodeIssuing.intercodeVersion ?? 1,
-      intercodeInstanciation: iss.intercodeIssuing.intercodeInstanciation ?? 1,
-      networkId: iss.intercodeIssuing.networkId,
-      productRetailer: iss.intercodeIssuing.productRetailer,
-    });
-    extension = {
-      extensionId: iss.intercodeIssuing.extensionId ?? `_${rics}II1`,
-      extensionData: issuingBytes,
-    };
+/**
+ * Encode rail ticket data (UicRailTicketData) to PER bytes.
+ */
+function encodeRailTicket(fcbVersion: number, railTicket: UicRailTicketData, securityProviderNum?: number): Uint8Array {
+  const iss = railTicket.issuingDetail;
+
+  let issuingDetail: Record<string, unknown> | undefined;
+  if (iss) {
+    // Handle extension: re-encode intercode if present, otherwise pass through raw
+    const { intercodeIssuing, extension: rawExtension, ...issuingRest } = iss;
+    let extension: { extensionId: string; extensionData: Uint8Array } | undefined;
+    if (intercodeIssuing) {
+      const issuingBytes = getIntercodeIssuingCodec().encode({
+        intercodeVersion: intercodeIssuing.intercodeVersion ?? 1,
+        intercodeInstanciation: intercodeIssuing.intercodeInstanciation ?? 1,
+        networkId: intercodeIssuing.networkId,
+        productRetailer: intercodeIssuing.productRetailer,
+      });
+      extension = {
+        extensionId: intercodeIssuing.extensionId ?? `_${iss.securityProviderNum ?? securityProviderNum ?? 0}II1`,
+        extensionData: issuingBytes,
+      };
+    } else {
+      extension = rawExtension;
+    }
+
+    issuingDetail = { ...issuingRest, extension };
   }
 
-  // Build the issuing detail
-  const issuingDetail: Record<string, unknown> = {
-    securityProviderNum: iss.securityProviderNum,
-    issuerNum: iss.issuerNum,
-    issuingYear: iss.issuingYear,
-    issuingDay: iss.issuingDay,
-    issuingTime: iss.issuingTime,
-    issuerName: iss.issuerName,
-    specimen: iss.specimen ?? false,
-    securePaperTicket: iss.securePaperTicket ?? false,
-    activated: iss.activated ?? true,
-    currency: iss.currency,
-    currencyFract: iss.currencyFract,
-    issuerPNR: iss.issuerPNR,
-    extension,
-  };
-
-  // Build transport documents
-  const transportDocument = input.railTicket.transportDocument?.map((doc) => ({
-    ticket: { key: doc.ticketType, value: doc.ticket },
-  }));
-
   // Validate traveler birth-day fields match the target FCB version
-  if (input.railTicket.travelerDetail?.traveler) {
-    for (const t of input.railTicket.travelerDetail.traveler) {
+  if (railTicket.travelerDetail?.traveler) {
+    for (const t of railTicket.travelerDetail.traveler) {
       if (fcbVersion >= 2 && t.dayOfBirth !== undefined) {
         throw new Error(
           `Traveler field "dayOfBirth" is not valid for FCB v${fcbVersion}. Use "dayOfBirthInMonth" instead.`,
@@ -343,12 +367,12 @@ function encodeRailTicket(fcbVersion: number, input: Pick<UicBarcodeTicketInput,
     }
   }
 
-  // Build the full rail ticket data
+  // Transport documents pass through directly (already { ticket: { key, value } } format)
   const ticketData: Record<string, unknown> = {
     issuingDetail,
-    travelerDetail: input.railTicket.travelerDetail,
-    transportDocument,
-    controlDetail: input.railTicket.controlDetail,
+    travelerDetail: railTicket.travelerDetail,
+    transportDocument: railTicket.transportDocument,
+    controlDetail: railTicket.controlDetail,
   };
 
   const codecs = getTicketCodecs(fcbVersion);

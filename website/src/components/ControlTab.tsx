@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
-import type { UicBarcodeTicketInput } from 'dosipas-ts';
+import type { UicBarcodeTicket } from 'dosipas-ts';
 import HexInput from './HexInput';
 import CameraScanner from './CameraScanner';
 import { useTicketControl } from '../hooks/useTicketControl';
-import { ticketToInput } from '../lib/convert';
 import type { ControlResult, CheckResult, TravelerInfo } from 'dosipas-ts';
 
 interface Props {
   initialHex: string;
   onHexChange: (hex: string) => void;
   onDecode: (hex: string) => void;
-  onEditInEncoder: (input: UicBarcodeTicketInput) => void;
+  onEditInEncoder: (ticket: UicBarcodeTicket) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -375,12 +374,7 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
 
   const handleEditInEncoder = () => {
     if (!result?.ticket) return;
-    try {
-      const input = ticketToInput(result.ticket);
-      onEditInEncoder(input);
-    } catch (e) {
-      alert(`Cannot convert: ${e instanceof Error ? e.message : e}`);
-    }
+    onEditInEncoder(result.ticket);
   };
 
   useEffect(() => {

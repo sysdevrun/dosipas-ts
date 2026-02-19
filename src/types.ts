@@ -51,8 +51,8 @@ export interface Level1Data {
 export interface DataSequenceEntry {
   /** Data format identifier (e.g. "FCB1", "FCB2", "FCB3"). */
   dataFormat: string;
-  /** Raw PER-encoded data bytes. */
-  data: Uint8Array;
+  /** Raw PER-encoded data bytes (produced by the encoder when absent). */
+  data?: Uint8Array;
   /** Decoded UicRailTicketData (when dataFormat is FCBn). */
   decoded?: UicRailTicketData;
 }
@@ -61,8 +61,8 @@ export interface DataSequenceEntry {
 export interface Level2Data {
   /** Data format identifier (e.g. "FDC1", "_3703.ID1"). */
   dataFormat: string;
-  /** Raw PER-encoded data bytes. */
-  data: Uint8Array;
+  /** Raw PER-encoded data bytes (produced by the encoder when absent). */
+  data?: Uint8Array;
   /** Decoded dynamic content data (UicDynamicContentData for FDC1, IntercodeDynamicData for _RICS.ID1). */
   decoded?: UicDynamicContentData | IntercodeDynamicData;
 }
@@ -288,173 +288,6 @@ export interface UicDynamicContentData {
   dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
   dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
   dynamicContentExtension?: DynamicContentExtensionData;
-}
-
-// ---------------------------------------------------------------------------
-// Encoding input types (flat structure for convenience)
-// ---------------------------------------------------------------------------
-
-/** Input for encoding a UIC barcode ticket. */
-export interface UicBarcodeTicketInput {
-  /** Header version (1 or 2). Default: 2. */
-  headerVersion?: number;
-  /** RICS code of the security provider. */
-  securityProviderNum?: number;
-  /** Key ID for signature verification. */
-  keyId?: number;
-  /** Level 1 key algorithm OID. */
-  level1KeyAlg?: string;
-  /** Level 2 key algorithm OID. */
-  level2KeyAlg?: string;
-  /** Level 1 signing algorithm OID. */
-  level1SigningAlg?: string;
-  /** Level 2 signing algorithm OID. */
-  level2SigningAlg?: string;
-  /** Level 2 public key bytes. */
-  level2PublicKey?: Uint8Array;
-  /** Level 1 signature bytes (placeholder). */
-  level1Signature?: Uint8Array;
-  /** Level 2 signature bytes (placeholder). */
-  level2Signature?: Uint8Array;
-  /** End of validity year (2016-2269, v2 header only). */
-  endOfValidityYear?: number;
-  /** End of validity day (1-366). */
-  endOfValidityDay?: number;
-  /** End of validity time in minutes (0-1439). */
-  endOfValidityTime?: number;
-  /** Validity duration in seconds (1-3600). */
-  validityDuration?: number;
-  /** FCB version (1, 2 or 3). Default: 2. */
-  fcbVersion?: number;
-  /** The rail ticket data to encode. */
-  railTicket: RailTicketInput;
-  /** Intercode 6 dynamic data for Level 2 (encoded as _RICS.ID1). */
-  dynamicData?: IntercodeDynamicDataInput;
-  /** UIC Dynamic Content Data for Level 2 (encoded as FDC1). */
-  dynamicContentData?: UicDynamicContentDataInput;
-}
-
-export interface RailTicketInput {
-  issuingDetail: IssuingDetailInput;
-  travelerDetail?: TravelerDetailInput;
-  transportDocument?: TransportDocumentInput[];
-  controlDetail?: Record<string, unknown>;
-}
-
-export interface IssuingDetailInput {
-  securityProviderNum?: number;
-  issuerNum?: number;
-  issuingYear: number;
-  issuingDay: number;
-  issuingTime?: number;
-  issuerName?: string;
-  specimen?: boolean;
-  securePaperTicket?: boolean;
-  activated?: boolean;
-  currency?: string;
-  currencyFract?: number;
-  issuerPNR?: string;
-  /** Intercode 6 issuing extension data. */
-  intercodeIssuing?: IntercodeIssuingDataInput;
-}
-
-export interface IntercodeIssuingDataInput {
-  /** Override the generated extension ID (e.g. "+FRII1"). When omitted, defaults to `_<RICS>II1`. */
-  extensionId?: string;
-  intercodeVersion?: number;
-  intercodeInstanciation?: number;
-  networkId: Uint8Array;
-  productRetailer?: ProductRetailerData;
-}
-
-export interface IntercodeDynamicDataInput {
-  /** RICS code for the dataFormat field (e.g. 3703 -> "_3703.ID1"). */
-  rics: number;
-  dynamicContentDay?: number;
-  dynamicContentTime?: number;
-  dynamicContentUTCOffset?: number;
-  dynamicContentDuration?: number;
-}
-
-/** Input for encoding UIC Dynamic Content Data (FDC1 format). */
-export interface UicDynamicContentDataInput {
-  dynamicContentMobileAppId?: string;
-  dynamicContentTimeStamp?: TimeStampData;
-  dynamicContentGeoCoordinate?: DynamicContentGeoCoordinate;
-  dynamicContentResponseToChallenge?: DynamicContentExtensionData[];
-  dynamicContentExtension?: DynamicContentExtensionData;
-}
-
-export interface TravelerDetailInput {
-  traveler?: Partial<TravelerInfo>[];
-  preferredLanguage?: string;
-  groupName?: string;
-}
-
-export interface TransportDocumentInput {
-  ticketType: string;
-  ticket: Record<string, unknown>;
-}
-
-// ---------------------------------------------------------------------------
-// Composable encoding input types
-// ---------------------------------------------------------------------------
-
-/** Input for encoding the level1Data SEQUENCE in isolation. */
-export interface Level1DataInput {
-  /** Header version (1 or 2). Default: 2. */
-  headerVersion?: number;
-  /** FCB version (1, 2 or 3). Default: 2. */
-  fcbVersion?: number;
-  /** RICS code of the security provider. */
-  securityProviderNum?: number;
-  /** Key ID for signature verification. */
-  keyId?: number;
-  /** Level 1 key algorithm OID. */
-  level1KeyAlg?: string;
-  /** Level 2 key algorithm OID. */
-  level2KeyAlg?: string;
-  /** Level 1 signing algorithm OID. */
-  level1SigningAlg?: string;
-  /** Level 2 signing algorithm OID. */
-  level2SigningAlg?: string;
-  /** Level 2 public key bytes. */
-  level2PublicKey?: Uint8Array;
-  /** End of validity year (2016-2269, v2 header only). */
-  endOfValidityYear?: number;
-  /** End of validity day (1-366). */
-  endOfValidityDay?: number;
-  /** End of validity time in minutes (0-1439). */
-  endOfValidityTime?: number;
-  /** Validity duration in seconds (1-3600). */
-  validityDuration?: number;
-  /** The rail ticket data to encode. */
-  railTicket: RailTicketInput;
-}
-
-/**
- * Input for encoding the level2SignedData SEQUENCE.
- * Uses pre-encoded RawBytes from asn1-per-ts for level1Data passthrough.
- */
-export interface Level2SignedDataInput {
-  /** Header version (1 or 2). Default: 2. */
-  headerVersion?: number;
-  /** Pre-encoded level1Data bytes (from encodeLevel1Data). */
-  level1Data: import('asn1-per-ts').RawBytes;
-  /** Level 1 DER signature bytes. */
-  level1Signature: Uint8Array;
-  /** Optional level 2 data block. */
-  level2Data?: { dataFormat: string; data: Uint8Array };
-}
-
-/** Input for encoding the outermost UicBarcodeHeader. */
-export interface UicBarcodeInput {
-  /** Header format string ("U1" or "U2"). */
-  format: string;
-  /** Pre-encoded level2SignedData bytes (from encodeLevel2SignedData). */
-  level2SignedData: import('asn1-per-ts').RawBytes;
-  /** Level 2 DER signature bytes. */
-  level2Signature?: Uint8Array;
 }
 
 // ---------------------------------------------------------------------------

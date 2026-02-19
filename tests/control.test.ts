@@ -8,7 +8,7 @@ import {
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
 } from '../src';
-import type { UicBarcodeTicketInput, Level1KeyProvider } from '../src';
+import type { UicBarcodeTicket, Level1KeyProvider } from '../src';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -16,6 +16,47 @@ import type { UicBarcodeTicketInput, Level1KeyProvider } from '../src';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/** Helper to build a minimal UicBarcodeTicket for testing. */
+function makeTicket(opts: {
+  securityProviderNum?: number;
+  keyId?: number;
+  endOfValidityYear?: number;
+  endOfValidityDay?: number;
+  issuerNum?: number;
+  issuingYear: number;
+  issuingDay: number;
+  specimen?: boolean;
+  activated?: boolean;
+}): UicBarcodeTicket {
+  return {
+    format: 'U2',
+    level2SignedData: {
+      level1Data: {
+        securityProviderNum: opts.securityProviderNum ?? 9999,
+        keyId: opts.keyId ?? 0,
+        endOfValidityYear: opts.endOfValidityYear,
+        endOfValidityDay: opts.endOfValidityDay,
+        dataSequence: [{
+          dataFormat: 'FCB2',
+          decoded: {
+            issuingDetail: {
+              issuerNum: opts.issuerNum,
+              issuingYear: opts.issuingYear,
+              issuingDay: opts.issuingDay,
+              specimen: opts.specimen ?? false,
+              securePaperTicket: false,
+              activated: opts.activated ?? true,
+            },
+            transportDocument: [
+              { ticket: { key: 'openTicket', value: { returnIncluded: false } } },
+            ],
+          },
+        }],
+      },
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -182,25 +223,15 @@ describe('controlTicket — expiry', () => {
 describe('controlTicket — specimen', () => {
   it('fails notSpecimen for a specimen ticket', async () => {
     const keys = generateKeyPair('P-256');
-    const input: UicBarcodeTicketInput = {
-      headerVersion: 2,
-      fcbVersion: 2,
-      securityProviderNum: 9999,
-      keyId: 0,
+    const ticket = makeTicket({
+      issuerNum: 9999,
+      issuingYear: 2025,
+      issuingDay: 100,
+      specimen: true,
       endOfValidityYear: 2099,
       endOfValidityDay: 365,
-      railTicket: {
-        issuingDetail: {
-          issuerNum: 9999,
-          issuingYear: 2025,
-          issuingDay: 100,
-          specimen: true,
-          activated: true,
-        },
-        transportDocument: [{ ticketType: 'openTicket', ticket: { returnIncluded: false } }],
-      },
-    };
-    const encoded = signAndEncodeTicket(input, keys);
+    });
+    const encoded = signAndEncodeTicket(ticket, keys);
     const hex = bytesToHex(encoded);
 
     const result = await controlTicket(hex);
@@ -270,24 +301,14 @@ describe('controlTicket — missing network ID', () => {
   it('fails when expected network IDs set on ticket without Intercode', async () => {
     // Create a ticket without Intercode extension
     const keys = generateKeyPair('P-256');
-    const input: UicBarcodeTicketInput = {
-      headerVersion: 2,
-      fcbVersion: 2,
-      securityProviderNum: 9999,
-      keyId: 0,
+    const ticket = makeTicket({
+      issuerNum: 9999,
+      issuingYear: 2025,
+      issuingDay: 100,
       endOfValidityYear: 2099,
       endOfValidityDay: 365,
-      railTicket: {
-        issuingDetail: {
-          issuerNum: 9999,
-          issuingYear: 2025,
-          issuingDay: 100,
-          activated: true,
-        },
-        transportDocument: [{ ticketType: 'openTicket', ticket: { returnIncluded: false } }],
-      },
-    };
-    const encoded = signAndEncodeTicket(input, keys);
+    });
+    const encoded = signAndEncodeTicket(ticket, keys);
     const hex = bytesToHex(encoded);
 
     const result = await controlTicket(hex, {

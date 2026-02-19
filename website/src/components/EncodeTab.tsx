@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import type { UicBarcodeTicketInput, CurveName } from 'dosipas-ts';
+import type { UicBarcodeTicket, UicDynamicContentData, IntercodeDynamicData, CurveName } from 'dosipas-ts';
 import TicketForm, { ToggleSection, NumberField, OptionalNumberField } from './TicketForm';
 import KeyPairInput from './KeyPairInput';
 import AztecBarcode from './AztecBarcode';
@@ -39,37 +39,52 @@ function formatISOWithTZ(date: Date, utcOffsetQuarterHours?: number): string {
   return `${y}-${mo}-${d}T${h}:${m}:${s}${sign}${hh}:${mm}`;
 }
 
-function computeIssuingTime(input: UicBarcodeTicketInput): Date | undefined {
-  const iss = input.railTicket.issuingDetail;
-  if (iss.issuingYear == null || iss.issuingDay == null) return undefined;
+/** Access helpers for nested ticket structure. */
+function getL1(ticket: UicBarcodeTicket) {
+  return ticket.level2SignedData.level1Data;
+}
+function getIss(ticket: UicBarcodeTicket) {
+  return getL1(ticket).dataSequence[0]?.decoded?.issuingDetail;
+}
+
+function computeIssuingTime(ticket: UicBarcodeTicket): Date | undefined {
+  const iss = getIss(ticket);
+  if (!iss || iss.issuingYear == null || iss.issuingDay == null) return undefined;
   return new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay, 0, iss.issuingTime ?? 0));
 }
 
-function computeEndOfValidity(input: UicBarcodeTicketInput): Date | undefined {
-  if (input.endOfValidityYear != null && input.endOfValidityDay != null) {
+function computeEndOfValidity(ticket: UicBarcodeTicket): Date | undefined {
+  const l1 = getL1(ticket);
+  if (l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
     return new Date(
-      Date.UTC(input.endOfValidityYear, 0, input.endOfValidityDay, 0, input.endOfValidityTime ?? 0)
-      + (input.validityDuration ?? 0) * 1000,
+      Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0)
+      + (l1.validityDuration ?? 0) * 1000,
     );
   }
-  if (input.validityDuration != null) {
-    const issuing = computeIssuingTime(input);
-    if (issuing) return new Date(issuing.getTime() + input.validityDuration * 1000);
+  if (l1.validityDuration != null) {
+    const issuing = computeIssuingTime(ticket);
+    if (issuing) return new Date(issuing.getTime() + l1.validityDuration * 1000);
   }
   return undefined;
 }
 
-function computeFdc1Time(input: UicBarcodeTicketInput): Date | undefined {
-  const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+function computeFdc1Time(ticket: UicBarcodeTicket): Date | undefined {
+  const l2d = ticket.level2SignedData.level2Data;
+  if (!l2d || l2d.dataFormat !== 'FDC1') return undefined;
+  const ts = (l2d.decoded as UicDynamicContentData | undefined)?.dynamicContentTimeStamp;
   if (!ts) return undefined;
-  const iss = input.railTicket.issuingDetail;
+  const iss = getIss(ticket);
+  if (!iss) return undefined;
   return new Date(Date.UTC(iss.issuingYear, 0, ts.day, 0, 0, ts.time));
 }
 
-function computeIntercodeTime(input: UicBarcodeTicketInput): Date | undefined {
-  const dd = input.dynamicData;
+function computeIntercodeTime(ticket: UicBarcodeTicket): Date | undefined {
+  const l2d = ticket.level2SignedData.level2Data;
+  if (!l2d || l2d.dataFormat === 'FDC1') return undefined;
+  const dd = l2d.decoded as IntercodeDynamicData | undefined;
   if (!dd) return undefined;
-  const iss = input.railTicket.issuingDetail;
+  const iss = getIss(ticket);
+  if (!iss) return undefined;
   const issuingDate = new Date(Date.UTC(iss.issuingYear, 0, iss.issuingDay));
   return new Date(
     issuingDate.getTime()
@@ -150,36 +165,38 @@ function OidSelectField({
 interface Props {
   onDecode: (hex: string) => void;
   onControl: (hex: string) => void;
-  prefillInput: UicBarcodeTicketInput | null;
+  prefillInput: UicBarcodeTicket | null;
   onPrefillConsumed: () => void;
 }
 
-function getDefaultInput(): UicBarcodeTicketInput {
+function getDefaultTicket(): UicBarcodeTicket {
   const now = new Date();
   const dayOfYear = Math.floor(
     (now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000,
   );
   return {
-    headerVersion: 2,
-    fcbVersion: 3,
-    securityProviderNum: 9999,
-    keyId: 1,
-    railTicket: {
-      issuingDetail: {
-        issuerNum: 9999,
-        issuingYear: now.getFullYear(),
-        issuingDay: dayOfYear,
-        specimen: true,
-        activated: true,
-      },
-      transportDocument: [
-        {
-          ticketType: 'openTicket',
-          ticket: {
-            returnIncluded: false,
+    format: 'U2',
+    level2SignedData: {
+      level1Data: {
+        securityProviderNum: 9999,
+        keyId: 1,
+        dataSequence: [{
+          dataFormat: 'FCB3',
+          decoded: {
+            issuingDetail: {
+              issuerNum: 9999,
+              issuingYear: now.getFullYear(),
+              issuingDay: dayOfYear,
+              specimen: true,
+              securePaperTicket: false,
+              activated: true,
+            },
+            transportDocument: [
+              { ticket: { key: 'openTicket', value: { returnIncluded: false } } },
+            ],
           },
-        },
-      ],
+        }],
+      },
     },
   };
 }
@@ -252,7 +269,7 @@ function SignatureSection({
 // ---------------------------------------------------------------------------
 
 export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefillConsumed }: Props) {
-  const [input, setInput] = useState<UicBarcodeTicketInput>(getDefaultInput);
+  const [ticket, setTicket] = useState<UicBarcodeTicket>(getDefaultTicket);
 
   // Level 1 key state
   const [l1Curve, setL1Curve] = useState('P-256');
@@ -298,7 +315,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
   // Keep mutable refs for the regeneration interval
   const regenRef = useRef<{
-    input: UicBarcodeTicketInput;
+    ticket: UicBarcodeTicket;
     l1PrivKey: string;
     l1Curve: string;
     l2PrivKey: string;
@@ -313,8 +330,8 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // Input change handler - marks signatures as stale
   // -------------------------------------------------------------------------
 
-  const handleInputChange = useCallback((newInput: UicBarcodeTicketInput) => {
-    setInput(newInput);
+  const handleInputChange = useCallback((newTicket: UicBarcodeTicket) => {
+    setTicket(newTicket);
     // Mark signatures stale when data changes
     if (l1SigHex) setL1SigStale(true);
     if (l2SigHex) setL2SigStale(true);
@@ -350,31 +367,35 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
   useEffect(() => {
     if (prefillInput) {
-      setInput(prefillInput);
+      setTicket(prefillInput);
+      const l1 = prefillInput.level2SignedData.level1Data;
+      const l2d = prefillInput.level2SignedData.level2Data;
       // Enable L2 if prefill has dynamic data or L2 fields
-      if (prefillInput.dynamicData || prefillInput.dynamicContentData || prefillInput.level2PublicKey) {
+      if (l2d || l1.level2PublicKey) {
         setL2Enabled(true);
       }
       // Populate OID state from prefilled input
-      if (prefillInput.level1KeyAlg) setL1KeyAlg(prefillInput.level1KeyAlg);
-      if (prefillInput.level1SigningAlg) setL1SigningAlg(prefillInput.level1SigningAlg);
-      if (prefillInput.level2KeyAlg) setL2KeyAlg(prefillInput.level2KeyAlg);
-      if (prefillInput.level2SigningAlg) setL2SigningAlg(prefillInput.level2SigningAlg);
+      if (l1.level1KeyAlg) setL1KeyAlg(l1.level1KeyAlg);
+      if (l1.level1SigningAlg) setL1SigningAlg(l1.level1SigningAlg);
+      if (l1.level2KeyAlg) setL2KeyAlg(l1.level2KeyAlg);
+      if (l1.level2SigningAlg) setL2SigningAlg(l1.level2SigningAlg);
       // Populate L2 public key from prefill (shown even without an L2 private key)
-      if (prefillInput.level2PublicKey && prefillInput.level2PublicKey.length > 0) {
-        setPrefillL2PubKeyHex(bytesToHex(prefillInput.level2PublicKey));
+      if (l1.level2PublicKey && l1.level2PublicKey.length > 0) {
+        setPrefillL2PubKeyHex(bytesToHex(l1.level2PublicKey));
       } else {
         setPrefillL2PubKeyHex('');
       }
       // Populate signatures from prefilled input if present
-      if (prefillInput.level1Signature && prefillInput.level1Signature.length > 0) {
-        setL1SigHex(bytesToHex(prefillInput.level1Signature));
+      const l1Sig = prefillInput.level2SignedData.level1Signature;
+      if (l1Sig && l1Sig.length > 0) {
+        setL1SigHex(bytesToHex(l1Sig));
       } else {
         setL1SigHex('');
       }
       setL1SigStale(false);
-      if (prefillInput.level2Signature && prefillInput.level2Signature.length > 0) {
-        setL2SigHex(bytesToHex(prefillInput.level2Signature));
+      const l2Sig = prefillInput.level2Signature;
+      if (l2Sig && l2Sig.length > 0) {
+        setL2SigHex(bytesToHex(l2Sig));
       } else {
         setL2SigHex('');
       }
@@ -384,24 +405,29 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   }, [prefillInput, onPrefillConsumed]);
 
   // -------------------------------------------------------------------------
-  // Build a prepared input with OIDs and L2 public key set
+  // Build a prepared ticket with OIDs and L2 public key set
   // -------------------------------------------------------------------------
 
-  const buildPreparedInput = useCallback((): UicBarcodeTicketInput => {
-    const prepared: UicBarcodeTicketInput = {
-      ...input,
+  const buildPreparedTicket = useCallback((): UicBarcodeTicket => {
+    const l1 = ticket.level2SignedData.level1Data;
+    const preparedL1 = {
+      ...l1,
       level1KeyAlg: l1KeyAlg,
       level1SigningAlg: l1SigningAlg,
+      ...(l2Enabled && effectiveL2PubKeyHex ? {
+        level2KeyAlg: l2KeyAlg,
+        level2SigningAlg: l2SigningAlg,
+        level2PublicKey: hexToBytes(effectiveL2PubKeyHex),
+      } : {}),
     };
-
-    if (l2Enabled && effectiveL2PubKeyHex) {
-      prepared.level2KeyAlg = l2KeyAlg;
-      prepared.level2SigningAlg = l2SigningAlg;
-      prepared.level2PublicKey = hexToBytes(effectiveL2PubKeyHex);
-    }
-
-    return prepared;
-  }, [input, l1KeyAlg, l1SigningAlg, l2Enabled, l2KeyAlg, l2SigningAlg, effectiveL2PubKeyHex]);
+    return {
+      ...ticket,
+      level2SignedData: {
+        ...ticket.level2SignedData,
+        level1Data: preparedL1,
+      },
+    };
+  }, [ticket, l1KeyAlg, l1SigningAlg, l2Enabled, l2KeyAlg, l2SigningAlg, effectiveL2PubKeyHex]);
 
   // -------------------------------------------------------------------------
   // Generate Level 1 signature
@@ -409,7 +435,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
   const handleGenerateL1Sig = useCallback(() => {
     try {
-      const prepared = buildPreparedInput();
+      const prepared = buildPreparedTicket();
       const sig = signLevel1Data(prepared, l1PrivKey, l1Curve);
       const sigHex = bytesToHex(sig);
       setL1SigHex(sigHex);
@@ -420,7 +446,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
     } catch (e) {
       setL1SigError(e instanceof Error ? e.message : 'Failed to generate L1 signature');
     }
-  }, [buildPreparedInput, l1PrivKey, l1Curve, l2SigHex]);
+  }, [buildPreparedTicket, l1PrivKey, l1Curve, l2SigHex]);
 
   // -------------------------------------------------------------------------
   // Generate Level 2 signature
@@ -432,9 +458,15 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
       return;
     }
     try {
-      const prepared = buildPreparedInput();
-      prepared.level1Signature = hexToBytes(l1SigHex);
-      const sig = signLevel2Data(prepared, l2PrivKey, l2Curve);
+      const prepared = buildPreparedTicket();
+      const withL1Sig: UicBarcodeTicket = {
+        ...prepared,
+        level2SignedData: {
+          ...prepared.level2SignedData,
+          level1Signature: hexToBytes(l1SigHex),
+        },
+      };
+      const sig = signLevel2Data(withL1Sig, l2PrivKey, l2Curve);
       const sigHex = bytesToHex(sig);
       setL2SigHex(sigHex);
       setL2SigStale(false);
@@ -442,19 +474,28 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
     } catch (e) {
       setL2SigError(e instanceof Error ? e.message : 'Failed to generate L2 signature');
     }
-  }, [buildPreparedInput, l1SigHex, l2PrivKey, l2Curve]);
+  }, [buildPreparedTicket, l1SigHex, l2PrivKey, l2Curve]);
 
   // -------------------------------------------------------------------------
   // Encode ticket with existing signatures
   // -------------------------------------------------------------------------
 
+  const l2Data = ticket.level2SignedData.level2Data;
+  const hasDynamic = !!l2Data;
+
   const handleEncode = useCallback(() => {
     try {
-      const prepared = buildPreparedInput();
-      prepared.level1Signature = l1SigHex ? hexToBytes(l1SigHex) : new Uint8Array(0);
-      prepared.level2Signature = l2SigHex ? hexToBytes(l2SigHex) : new Uint8Array(0);
+      const prepared = buildPreparedTicket();
+      const withSigs: UicBarcodeTicket = {
+        ...prepared,
+        level2SignedData: {
+          ...prepared.level2SignedData,
+          level1Signature: l1SigHex ? hexToBytes(l1SigHex) : new Uint8Array(0),
+        },
+        level2Signature: l2SigHex ? hexToBytes(l2SigHex) : undefined,
+      };
 
-      const encodedBytes = encodeTicket(prepared);
+      const encodedBytes = encodeTicket(withSigs);
       const encodedHex = bytesToHex(encodedBytes);
       setHex(encodedHex);
       setBytes(encodedBytes);
@@ -462,8 +503,8 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
       window.history.replaceState(null, '', `#encode&hex=${encodedHex}`);
 
       // Start dynamic refresh countdown if enabled
-      if (l2Enabled && dynamicRefreshEnabled && (input.dynamicData || input.dynamicContentData) && l1PrivKey && l2PrivKey) {
-        regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
+      if (l2Enabled && dynamicRefreshEnabled && hasDynamic && l1PrivKey && l2PrivKey) {
+        regenRef.current = { ticket, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
         setCountdown(dynamicRefreshInterval);
       } else {
         regenRef.current = null;
@@ -474,7 +515,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
       setBytes(new Uint8Array());
       setEncodeError(e instanceof Error ? e.message : 'Encode failed');
     }
-  }, [buildPreparedInput, l1SigHex, l2SigHex, l2Enabled, dynamicRefreshEnabled, input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg, dynamicRefreshInterval]);
+  }, [buildPreparedTicket, l1SigHex, l2SigHex, l2Enabled, dynamicRefreshEnabled, hasDynamic, ticket, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg, dynamicRefreshInterval]);
 
   // -------------------------------------------------------------------------
   // Dynamic content refresh (re-signs and re-encodes periodically)
@@ -490,45 +531,57 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
           const params = regenRef.current;
           if (params) {
             const now = new Date();
+            const curL2Data = params.ticket.level2SignedData.level2Data;
+            const isFdc1 = curL2Data?.dataFormat === 'FDC1';
 
-            let updatedInput: UicBarcodeTicketInput;
-            if (params.input.dynamicContentData) {
+            let updatedTicket: UicBarcodeTicket;
+            if (isFdc1) {
               // FDC1: day is absolute day-of-year (1-366), time is seconds since midnight UTC
               const fdc1Day = utcDayOfYear(now);
               const fdc1Time = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-              updatedInput = {
-                ...params.input,
-                dynamicContentData: {
-                  ...params.input.dynamicContentData,
-                  dynamicContentTimeStamp: {
-                    day: fdc1Day,
-                    time: fdc1Time,
+              updatedTicket = {
+                ...params.ticket,
+                level2SignedData: {
+                  ...params.ticket.level2SignedData,
+                  level2Data: {
+                    ...curL2Data!,
+                    decoded: {
+                      ...(curL2Data!.decoded as UicDynamicContentData),
+                      dynamicContentTimeStamp: {
+                        day: fdc1Day,
+                        time: fdc1Time,
+                      },
+                    },
                   },
                 },
               };
             } else {
               // Intercode: day is offset from issuing date (UTC) to local date, time is local seconds since midnight
-              const iss = params.input.railTicket.issuingDetail;
-              const issuingDateNum = Date.UTC(iss.issuingYear, 0, iss.issuingDay);
-              // Use local calendar date (getFullYear/Month/Date) expressed via Date.UTC for pure calendar-day arithmetic.
-              // Per IRS 90918-9 §7.3: dynamicContentDay = localDate - issuingDate(UTC), ignoring times.
+              const iss = getIss(params.ticket);
+              const issuingDateNum = Date.UTC(iss!.issuingYear, 0, iss!.issuingDay);
               const localDateNum = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
               const dayOffset = Math.floor((localDateNum - issuingDateNum) / 86400_000);
               const localSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-              // dynamicContentUTCOffset: quarter-hours where UTC = local + offset * 15min
               const utcOffsetQH = Math.round(now.getTimezoneOffset() / 15);
-              updatedInput = {
-                ...params.input,
-                dynamicData: {
-                  ...params.input.dynamicData!,
-                  dynamicContentDay: dayOffset,
-                  dynamicContentTime: localSeconds,
-                  dynamicContentUTCOffset: utcOffsetQH,
+              const dd = curL2Data!.decoded as IntercodeDynamicData;
+              updatedTicket = {
+                ...params.ticket,
+                level2SignedData: {
+                  ...params.ticket.level2SignedData,
+                  level2Data: {
+                    ...curL2Data!,
+                    decoded: {
+                      ...dd,
+                      dynamicContentDay: dayOffset,
+                      dynamicContentTime: localSeconds,
+                      dynamicContentUTCOffset: utcOffsetQH,
+                    },
+                  },
                 },
               };
             }
-            regenRef.current = { ...params, input: updatedInput };
-            setInput(updatedInput);
+            regenRef.current = { ...params, ticket: updatedTicket };
+            setTicket(updatedTicket);
 
             // Full sign+encode for dynamic refresh
             try {
@@ -542,26 +595,37 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                 publicKey: getPublicKey(params.l2PrivKey, params.l2Curve),
                 curve: params.l2Curve as CurveName,
               };
-              const refreshedBytes = signTicket(updatedInput, level1Key, level2Key);
+              const refreshedBytes = signTicket(updatedTicket, level1Key, level2Key);
               const refreshedHex = bytesToHex(refreshedBytes);
               setHex(refreshedHex);
               setBytes(refreshedBytes);
               window.history.replaceState(null, '', `#encode&hex=${refreshedHex}`);
               // Update signature fields to match
-              // Extract the sigs from the signed output by re-signing
-              const prepInput: UicBarcodeTicketInput = {
-                ...updatedInput,
-                level1KeyAlg: params.l1KeyAlg,
-                level1SigningAlg: params.l1SigningAlg,
-                level2KeyAlg: params.l2KeyAlg,
-                level2SigningAlg: params.l2SigningAlg,
-                level2PublicKey: level2Key.publicKey,
+              const prepTicket: UicBarcodeTicket = {
+                ...updatedTicket,
+                level2SignedData: {
+                  ...updatedTicket.level2SignedData,
+                  level1Data: {
+                    ...updatedTicket.level2SignedData.level1Data,
+                    level1KeyAlg: params.l1KeyAlg,
+                    level1SigningAlg: params.l1SigningAlg,
+                    level2KeyAlg: params.l2KeyAlg,
+                    level2SigningAlg: params.l2SigningAlg,
+                    level2PublicKey: level2Key.publicKey,
+                  },
+                },
               };
-              const l1Sig = signLevel1Data(prepInput, params.l1PrivKey, params.l1Curve);
+              const l1Sig = signLevel1Data(prepTicket, params.l1PrivKey, params.l1Curve);
               setL1SigHex(bytesToHex(l1Sig));
               setL1SigStale(false);
-              prepInput.level1Signature = l1Sig;
-              const l2Sig = signLevel2Data(prepInput, params.l2PrivKey, params.l2Curve);
+              const withL1Sig: UicBarcodeTicket = {
+                ...prepTicket,
+                level2SignedData: {
+                  ...prepTicket.level2SignedData,
+                  level1Signature: l1Sig,
+                },
+              };
+              const l2Sig = signLevel2Data(withL1Sig, params.l2PrivKey, params.l2Curve);
               setL2SigHex(bytesToHex(l2Sig));
               setL2SigStale(false);
               setEncodeError(null);
@@ -581,28 +645,36 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // Update regeneration params when input or keys change (while regeneration is active)
   useEffect(() => {
     if (regenRef.current) {
-      regenRef.current = { input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
+      regenRef.current = { ticket, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg };
     }
-  }, [input, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg]);
+  }, [ticket, l1PrivKey, l1Curve, l2PrivKey, l2Curve, l1KeyAlg, l1SigningAlg, l2KeyAlg, l2SigningAlg]);
 
   // Stop regeneration when L2 is disabled or dynamic refresh is turned off
   useEffect(() => {
-    if (!l2Enabled || !dynamicRefreshEnabled || (!input.dynamicData && !input.dynamicContentData)) {
+    if (!l2Enabled || !dynamicRefreshEnabled || !hasDynamic) {
       regenRef.current = null;
       setCountdown(null);
     }
-  }, [l2Enabled, dynamicRefreshEnabled, input.dynamicData, input.dynamicContentData]);
+  }, [l2Enabled, dynamicRefreshEnabled, hasDynamic]);
 
   // -------------------------------------------------------------------------
   // Dynamic data update helper
   // -------------------------------------------------------------------------
 
-  const updateDynamicData = useCallback((partial: Partial<UicBarcodeTicketInput['dynamicData'] & object>) => {
+  const updateDynamicData = useCallback((partial: Partial<IntercodeDynamicData>) => {
+    const curL2Data = ticket.level2SignedData.level2Data;
+    const dd = curL2Data?.decoded as IntercodeDynamicData | undefined;
     handleInputChange({
-      ...input,
-      dynamicData: { ...input.dynamicData!, ...partial },
+      ...ticket,
+      level2SignedData: {
+        ...ticket.level2SignedData,
+        level2Data: {
+          ...curL2Data!,
+          decoded: { ...dd!, ...partial },
+        },
+      },
     });
-  }, [input, handleInputChange]);
+  }, [ticket, handleInputChange]);
 
   // -------------------------------------------------------------------------
   // Misc helpers
@@ -613,24 +685,26 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   };
 
   const jsonPreview = useMemo(() => jsonReplacer
-    ? JSON.stringify(input, jsonReplacer, 2)
-    : JSON.stringify(input, null, 2),
-  [input]);
+    ? JSON.stringify(ticket, jsonReplacer, 2)
+    : JSON.stringify(ticket, null, 2),
+  [ticket]);
 
   const copyJson = () => {
     navigator.clipboard.writeText(jsonPreview);
   };
 
-  const hasDynamic = !!input.dynamicData || !!input.dynamicContentData;
-  const dynamicFormat: 'intercode' | 'fdc1' = input.dynamicContentData ? 'fdc1' : 'intercode';
+  const dynamicFormat: 'intercode' | 'fdc1' = l2Data?.dataFormat === 'FDC1' ? 'fdc1' : 'intercode';
   const l2KeyPresent = l2Enabled && !!l2PrivKey;
 
   // Computed times for display
-  const issuingTime = useMemo(() => computeIssuingTime(input), [input]);
-  const endOfValidity = useMemo(() => computeEndOfValidity(input), [input]);
+  const issuingTime = useMemo(() => computeIssuingTime(ticket), [ticket]);
+  const endOfValidity = useMemo(() => computeEndOfValidity(ticket), [ticket]);
   const dynamicTime = useMemo(() =>
-    dynamicFormat === 'fdc1' ? computeFdc1Time(input) : computeIntercodeTime(input),
-  [input, dynamicFormat]);
+    dynamicFormat === 'fdc1' ? computeFdc1Time(ticket) : computeIntercodeTime(ticket),
+  [ticket, dynamicFormat]);
+
+  const intercodeDecoded = dynamicFormat === 'intercode' ? l2Data?.decoded as IntercodeDynamicData | undefined : undefined;
+  const fdc1Decoded = dynamicFormat === 'fdc1' ? l2Data?.decoded as UicDynamicContentData | undefined : undefined;
 
   return (
     <div className="space-y-6">
@@ -673,7 +747,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
 
         {/* Level 1 Data */}
         <TicketForm
-          value={input}
+          value={ticket}
           onChange={handleInputChange}
           renderAfterKeyId={
             <>
@@ -779,15 +853,19 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
               onToggle={(v) => {
                 if (v) {
                   handleInputChange({
-                    ...input,
-                    dynamicContentData: {},
-                    dynamicData: undefined,
+                    ...ticket,
+                    level2SignedData: {
+                      ...ticket.level2SignedData,
+                      level2Data: { dataFormat: 'FDC1', decoded: {} },
+                    },
                   });
                 } else {
                   handleInputChange({
-                    ...input,
-                    dynamicData: undefined,
-                    dynamicContentData: undefined,
+                    ...ticket,
+                    level2SignedData: {
+                      ...ticket.level2SignedData,
+                      level2Data: undefined,
+                    },
                   });
                 }
               }}
@@ -802,9 +880,11 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                     checked={dynamicFormat === 'fdc1'}
                     onChange={() => {
                       handleInputChange({
-                        ...input,
-                        dynamicContentData: {},
-                        dynamicData: undefined,
+                        ...ticket,
+                        level2SignedData: {
+                          ...ticket.level2SignedData,
+                          level2Data: { dataFormat: 'FDC1', decoded: {} },
+                        },
                       });
                     }}
                     className="text-blue-600"
@@ -817,10 +897,16 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                     name="dynamicFormat"
                     checked={dynamicFormat === 'intercode'}
                     onChange={() => {
+                      const spn = ticket.level2SignedData.level1Data.securityProviderNum ?? 0;
                       handleInputChange({
-                        ...input,
-                        dynamicData: { rics: input.securityProviderNum ?? 0, dynamicContentDay: 0 },
-                        dynamicContentData: undefined,
+                        ...ticket,
+                        level2SignedData: {
+                          ...ticket.level2SignedData,
+                          level2Data: {
+                            dataFormat: `_${spn}.ID1`,
+                            decoded: { rics: spn, dynamicContentDay: 0 } as IntercodeDynamicData,
+                          },
+                        },
                       });
                     }}
                     className="text-blue-600"
@@ -833,14 +919,20 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                 <>
                   <NumberField
                     label="dynamicContentTimeStamp.day"
-                    value={input.dynamicContentData?.dynamicContentTimeStamp?.day}
+                    value={fdc1Decoded?.dynamicContentTimeStamp?.day}
                     onChange={(v) => {
-                      const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+                      const ts = fdc1Decoded?.dynamicContentTimeStamp;
                       handleInputChange({
-                        ...input,
-                        dynamicContentData: {
-                          ...input.dynamicContentData,
-                          dynamicContentTimeStamp: v != null ? { day: v, time: ts?.time ?? 0 } : undefined,
+                        ...ticket,
+                        level2SignedData: {
+                          ...ticket.level2SignedData,
+                          level2Data: {
+                            ...l2Data!,
+                            decoded: {
+                              ...fdc1Decoded,
+                              dynamicContentTimeStamp: v != null ? { day: v, time: ts?.time ?? 0 } : undefined,
+                            },
+                          },
                         },
                       });
                     }}
@@ -848,14 +940,20 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                   />
                   <NumberField
                     label="dynamicContentTimeStamp.time"
-                    value={input.dynamicContentData?.dynamicContentTimeStamp?.time}
+                    value={fdc1Decoded?.dynamicContentTimeStamp?.time}
                     onChange={(v) => {
-                      const ts = input.dynamicContentData?.dynamicContentTimeStamp;
+                      const ts = fdc1Decoded?.dynamicContentTimeStamp;
                       handleInputChange({
-                        ...input,
-                        dynamicContentData: {
-                          ...input.dynamicContentData,
-                          dynamicContentTimeStamp: v != null ? { day: ts?.day ?? 1, time: v } : undefined,
+                        ...ticket,
+                        level2SignedData: {
+                          ...ticket.level2SignedData,
+                          level2Data: {
+                            ...l2Data!,
+                            decoded: {
+                              ...fdc1Decoded,
+                              dynamicContentTimeStamp: v != null ? { day: ts?.day ?? 1, time: v } : undefined,
+                            },
+                          },
                         },
                       });
                     }}
@@ -872,34 +970,48 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
               {dynamicFormat === 'intercode' && (
                 <>
                   <NumberField
-                    label="rics"
-                    value={input.dynamicData?.rics}
-                    onChange={(v) => updateDynamicData({ rics: v ?? 0 })}
+                    label="rics (in dataFormat)"
+                    value={(() => {
+                      const m = l2Data?.dataFormat?.match(/^_(\d+)\.ID1$/);
+                      return m ? Number(m[1]) : undefined;
+                    })()}
+                    onChange={(v) => {
+                      handleInputChange({
+                        ...ticket,
+                        level2SignedData: {
+                          ...ticket.level2SignedData,
+                          level2Data: {
+                            ...l2Data!,
+                            dataFormat: `_${v ?? 0}.ID1`,
+                          },
+                        },
+                      });
+                    }}
                     placeholder="e.g. 3703"
                   />
                   <NumberField
                     label="dynamicContentDay"
-                    value={input.dynamicData?.dynamicContentDay}
+                    value={intercodeDecoded?.dynamicContentDay}
                     onChange={(v) => updateDynamicData({ dynamicContentDay: v })}
                   />
                   <OptionalNumberField
                     label="dynamicContentTime"
-                    value={input.dynamicData?.dynamicContentTime}
+                    value={intercodeDecoded?.dynamicContentTime}
                     onChange={(v) => updateDynamicData({ dynamicContentTime: v })}
                   />
                   <OptionalNumberField
                     label="dynamicContentUTCOffset"
-                    value={input.dynamicData?.dynamicContentUTCOffset}
+                    value={intercodeDecoded?.dynamicContentUTCOffset}
                     onChange={(v) => updateDynamicData({ dynamicContentUTCOffset: v })}
                   />
                   <OptionalNumberField
                     label="dynamicContentDuration"
-                    value={input.dynamicData?.dynamicContentDuration}
+                    value={intercodeDecoded?.dynamicContentDuration}
                     onChange={(v) => updateDynamicData({ dynamicContentDuration: v })}
                   />
                   {dynamicTime && (
                     <div className="col-span-2 text-xs text-gray-400">
-                      generation time: <ComputedTimeDisplay date={dynamicTime} utcOffsetQuarterHours={input.dynamicData?.dynamicContentUTCOffset} />
+                      generation time: <ComputedTimeDisplay date={dynamicTime} utcOffsetQuarterHours={intercodeDecoded?.dynamicContentUTCOffset} />
                     </div>
                   )}
                 </>

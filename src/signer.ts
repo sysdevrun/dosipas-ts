@@ -15,7 +15,7 @@ import { p256, p384, p521 } from '@noble/curves/nist.js';
 import { encodeLevel1Data, encodeLevel2Data, encodeLevel2SignedData, encodeUicBarcode, encodeTicketToBytes } from './encoder';
 import { extractSignedData } from './signed-data';
 import { rawToDer } from './signature-utils';
-import type { UicBarcodeTicketInput } from './types';
+import type { UicBarcodeTicket, Level1Data } from './types';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -166,27 +166,32 @@ export function getPublicKey(privateKey: Uint8Array, curve: CurveName): Uint8Arr
  * Encodes the ticket with a zero-filled Level 1 signature placeholder,
  * extracts the Level 1 signed data, and produces the DER signature.
  *
- * @param input - Ticket input **without** `level1Signature` set (it will be overwritten).
+ * @param ticket - Ticket (level1Signature will be overwritten with a zero placeholder).
  * @param privateKey - Level 1 private key bytes.
  * @param curve - The ECDSA curve.
  * @returns DER-encoded Level 1 signature bytes.
  */
 export function signLevel1(
-  input: UicBarcodeTicketInput,
+  ticket: UicBarcodeTicket,
   privateKey: Uint8Array,
   curve: CurveName,
 ): Uint8Array {
   const curveConfig = CURVES[curve];
   const zeroSig = new Uint8Array(maxDerSigSize(curve));
+  const l1 = ticket.level2SignedData.level1Data;
 
-  // Prepare input with algorithm OIDs and zero placeholder
-  const prepared: UicBarcodeTicketInput = {
-    ...input,
-    level1KeyAlg: input.level1KeyAlg ?? curveConfig.keyAlgOid,
-    level1SigningAlg: input.level1SigningAlg ?? curveConfig.sigAlgOid,
-    level1Signature: zeroSig,
-    // Keep existing L2 signature or use zero
-    level2Signature: input.level2Signature ?? new Uint8Array(0),
+  const prepared: UicBarcodeTicket = {
+    ...ticket,
+    level2SignedData: {
+      ...ticket.level2SignedData,
+      level1Data: {
+        ...l1,
+        level1KeyAlg: l1.level1KeyAlg ?? curveConfig.keyAlgOid,
+        level1SigningAlg: l1.level1SigningAlg ?? curveConfig.sigAlgOid,
+      },
+      level1Signature: zeroSig,
+    },
+    level2Signature: ticket.level2Signature ?? new Uint8Array(0),
   };
 
   const bytes = encodeTicketToBytes(prepared);
@@ -201,27 +206,34 @@ export function signLevel1(
  * Level 2 placeholder, extracts the Level 2 signed data, and produces the
  * DER signature.
  *
- * @param input - Ticket input with `level1Signature` already set.
+ * @param ticket - Ticket with `level2SignedData.level1Signature` already set.
  * @param privateKey - Level 2 private key bytes.
  * @param curve - The ECDSA curve.
  * @returns DER-encoded Level 2 signature bytes.
  */
 export function signLevel2(
-  input: UicBarcodeTicketInput,
+  ticket: UicBarcodeTicket,
   privateKey: Uint8Array,
   curve: CurveName,
 ): Uint8Array {
-  if (!input.level1Signature) {
+  if (!ticket.level2SignedData.level1Signature) {
     throw new Error('Level 1 signature must be set before signing Level 2');
   }
 
   const curveConfig = CURVES[curve];
   const zeroSig = new Uint8Array(maxDerSigSize(curve));
+  const l1 = ticket.level2SignedData.level1Data;
 
-  const prepared: UicBarcodeTicketInput = {
-    ...input,
-    level2KeyAlg: input.level2KeyAlg ?? curveConfig.keyAlgOid,
-    level2SigningAlg: input.level2SigningAlg ?? curveConfig.sigAlgOid,
+  const prepared: UicBarcodeTicket = {
+    ...ticket,
+    level2SignedData: {
+      ...ticket.level2SignedData,
+      level1Data: {
+        ...l1,
+        level2KeyAlg: l1.level2KeyAlg ?? curveConfig.keyAlgOid,
+        level2SigningAlg: l1.level2SigningAlg ?? curveConfig.sigAlgOid,
+      },
+    },
     level2Signature: zeroSig,
   };
 
@@ -240,55 +252,50 @@ export function signLevel2(
  *
  * When `level2Key` is omitted, only Level 1 signing is performed (static barcode mode).
  *
- * @param input - Ticket data to encode (signature fields are overwritten).
+ * @param ticket - Ticket data to encode (signature fields are overwritten).
  * @param level1Key - Level 1 signing key pair.
  * @param level2Key - Optional Level 2 signing key pair.
  * @returns Encoded ticket bytes with valid signatures.
  */
 export function signAndEncodeTicket(
-  input: UicBarcodeTicketInput,
+  ticket: UicBarcodeTicket,
   level1Key: SigningKeyPair,
   level2Key?: SigningKeyPair,
 ): Uint8Array {
   const l1Curve = CURVES[level1Key.curve];
-  const headerVersion = input.headerVersion ?? 2;
-  const format = `U${headerVersion}`;
+  const l1 = ticket.level2SignedData.level1Data;
+
+  // Build level1Data with algorithm OIDs and L2 public key.
+  // Always set OIDs from the key pair (overriding any existing values from a decoded ticket).
+  const level1Data: Level1Data = {
+    ...l1,
+    level1KeyAlg: l1Curve.keyAlgOid,
+    level2KeyAlg: level2Key ? CURVES[level2Key.curve].keyAlgOid : l1.level2KeyAlg,
+    level1SigningAlg: l1Curve.sigAlgOid,
+    level2SigningAlg: level2Key ? CURVES[level2Key.curve].sigAlgOid : l1.level2SigningAlg,
+    level2PublicKey: level2Key ? level2Key.publicKey : l1.level2PublicKey,
+  };
 
   // Step 1: Encode level1Data
-  const level1Raw = encodeLevel1Data({
-    headerVersion,
-    fcbVersion: input.fcbVersion,
-    securityProviderNum: input.securityProviderNum,
-    keyId: input.keyId,
-    level1KeyAlg: input.level1KeyAlg ?? l1Curve.keyAlgOid,
-    level2KeyAlg: level2Key ? (input.level2KeyAlg ?? CURVES[level2Key.curve].keyAlgOid) : input.level2KeyAlg,
-    level1SigningAlg: input.level1SigningAlg ?? l1Curve.sigAlgOid,
-    level2SigningAlg: level2Key ? (input.level2SigningAlg ?? CURVES[level2Key.curve].sigAlgOid) : input.level2SigningAlg,
-    level2PublicKey: level2Key ? level2Key.publicKey : input.level2PublicKey,
-    endOfValidityYear: input.endOfValidityYear,
-    endOfValidityDay: input.endOfValidityDay,
-    endOfValidityTime: input.endOfValidityTime,
-    validityDuration: input.validityDuration,
-    railTicket: input.railTicket,
-  });
+  const level1Raw = encodeLevel1Data(level1Data, ticket.format);
 
   // Step 2: Sign level1Data
   const level1Sig = signPayload(level1Raw.data, level1Key.privateKey, level1Key.curve);
 
   // Step 3: Build level2Data if present
-  let level2Data: { dataFormat: string; data: Uint8Array } | undefined;
-  if (input.dynamicContentData) {
-    level2Data = encodeLevel2Data(input.dynamicContentData);
-  } else if (input.dynamicData) {
-    level2Data = encodeLevel2Data(input.dynamicData);
+  let level2DataEncoded: { dataFormat: string; data: Uint8Array } | undefined;
+  const l2 = ticket.level2SignedData.level2Data;
+  if (l2) {
+    level2DataEncoded = encodeLevel2Data(l2);
   }
 
   // Step 4: Encode level2SignedData
+  const headerVersion = parseInt(ticket.format.replace('U', ''), 10);
   const level2Raw = encodeLevel2SignedData({
     headerVersion,
     level1Data: level1Raw,
     level1Signature: level1Sig,
-    level2Data,
+    level2Data: level2DataEncoded,
   });
 
   // Step 5: Sign level2SignedData (if level2Key provided)
@@ -299,9 +306,8 @@ export function signAndEncodeTicket(
 
   // Step 6: Encode final barcode
   return encodeUicBarcode({
-    format,
+    format: ticket.format,
     level2SignedData: level2Raw,
     level2Signature: level2Sig,
   });
 }
-

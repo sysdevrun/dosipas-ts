@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { decodeTicket } from 'dosipas-ts';
-import type { UicBarcodeTicketInput } from 'dosipas-ts';
+import type { UicBarcodeTicket } from 'dosipas-ts';
 import DecodeTab from './components/DecodeTab';
 import EncodeTab from './components/EncodeTab';
 import ControlTab from './components/ControlTab';
-import { ticketToInput } from './lib/convert';
 
 type Tab = 'decode' | 'encode' | 'control';
 
@@ -32,7 +31,7 @@ function getInitialHex(): string {
 export default function App() {
   const [tab, setTab] = useState<Tab>(getInitialTab);
   const [sharedHex, setSharedHex] = useState(getInitialHex);
-  const [prefillInput, setPrefillInput] = useState<UicBarcodeTicketInput | null>(null);
+  const [prefillInput, setPrefillInput] = useState<UicBarcodeTicket | null>(null);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -60,8 +59,7 @@ export default function App() {
 
   const tryPrefillEncode = useCallback((hex: string) => {
     try {
-      const ticket = decodeTicket(hex);
-      setPrefillInput(ticketToInput(ticket));
+      setPrefillInput(decodeTicket(hex));
     } catch {
       // Ignore decode errors - encode tab still usable
     }
@@ -87,8 +85,8 @@ export default function App() {
     window.location.hash = buildHash('control', hex);
   };
 
-  const switchToEncode = (input: UicBarcodeTicketInput) => {
-    setPrefillInput(input);
+  const switchToEncode = (ticket: UicBarcodeTicket) => {
+    setPrefillInput(ticket);
     setTab('encode');
     window.location.hash = buildHash('encode', sharedHex);
   };
