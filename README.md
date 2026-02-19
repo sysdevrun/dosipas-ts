@@ -88,48 +88,57 @@ l2.decoded     // UicDynamicContentData (FDC1) or IntercodeDynamicData (Intercod
 
 ## Encoding
 
-```ts
-import { encodeTicket, encodeTicketToBytes } from 'dosipas-ts';
+`encodeTicket` accepts the same `UicBarcodeTicket` type returned by `decodeTicket`, so round-tripping works directly:
 
-const hex = encodeTicket({
-  headerVersion: 2,
-  fcbVersion: 2,
-  securityProviderNum: 3703,
-  keyId: 1,
-  level1KeyAlg: '1.2.840.10045.3.1.7',
-  level2KeyAlg: '1.2.840.10045.3.1.7',
-  level1SigningAlg: '1.2.840.10045.4.3.2',
-  level2SigningAlg: '1.2.840.10045.4.3.2',
-  level2PublicKey: publicKeyBytes,
-  level1Signature: level1SigBytes,
-  level2Signature: level2SigBytes,
-  railTicket: {
-    issuingDetail: {
+```ts
+import { decodeTicket, encodeTicket, encodeTicketToBytes } from 'dosipas-ts';
+import type { UicBarcodeTicket } from 'dosipas-ts';
+
+// Round-trip: decode → encode
+const hex = encodeTicket(decodeTicket(originalHex));
+
+// Build a ticket from scratch
+const ticket: UicBarcodeTicket = {
+  format: 'U2',
+  level2SignedData: {
+    level1Data: {
       securityProviderNum: 3703,
-      issuerNum: 3703,
-      issuingYear: 2025,
-      issuingDay: 44,
-      activated: true,
-      currency: 'EUR',
-      currencyFract: 2,
-      intercodeIssuing: {
-        networkId: new Uint8Array([0x11, 0x87]),
-        productRetailer: { retailChannel: 'mobileApplication' },
-      },
+      keyId: 1,
+      level1KeyAlg: '1.2.840.10045.3.1.7',
+      level1SigningAlg: '1.2.840.10045.4.3.2',
+      level2KeyAlg: '1.2.840.10045.3.1.7',
+      level2SigningAlg: '1.2.840.10045.4.3.2',
+      level2PublicKey: publicKeyBytes,
+      dataSequence: [{
+        dataFormat: 'FCB3',
+        decoded: {
+          issuingDetail: {
+            issuerNum: 3703,
+            issuingYear: 2025,
+            issuingDay: 44,
+            activated: true,
+            specimen: false,
+            securePaperTicket: false,
+          },
+          transportDocument: [
+            { ticket: { key: 'openTicket', value: { returnIncluded: false } } },
+          ],
+        },
+      }],
     },
-    transportDocument: [
-      { ticketType: 'openTicket', ticket: { /* ... */ } },
-    ],
+    level1Signature: level1SigBytes,
+    level2Data: {
+      dataFormat: 'FDC1',
+      decoded: { dynamicContentDay: 0, dynamicContentTime: 720 },
+    },
   },
-  dynamicData: {
-    rics: 3703,
-    dynamicContentDay: 0,
-    dynamicContentTime: 720,
-  },
-});
+  level2Signature: level2SigBytes,
+};
+
+const encoded = encodeTicket(ticket);
 
 // Or get bytes directly
-const bytes = encodeTicketToBytes({ /* same input */ });
+const bytes = encodeTicketToBytes(ticket);
 ```
 
 ## Signing
@@ -138,28 +147,39 @@ Sign tickets with ECDSA using the two-pass signing flow (Level 1, then Level 2):
 
 ```ts
 import { signAndEncodeTicket, generateKeyPair } from 'dosipas-ts';
+import type { UicBarcodeTicket } from 'dosipas-ts';
 
 const level1Key = generateKeyPair('P-256');
 const level2Key = generateKeyPair('P-256');
 
-const ticketBytes = signAndEncodeTicket(
-  {
-    headerVersion: 2,
-    fcbVersion: 2,
-    securityProviderNum: 3703,
-    keyId: 1,
-    railTicket: {
-      issuingDetail: {
-        issuerNum: 3703,
-        issuingYear: 2025,
-        issuingDay: 44,
-        activated: true,
-      },
-      transportDocument: [
-        { ticketType: 'openTicket', ticket: { /* ... */ } },
-      ],
+const ticket: UicBarcodeTicket = {
+  format: 'U2',
+  level2SignedData: {
+    level1Data: {
+      securityProviderNum: 3703,
+      keyId: 1,
+      dataSequence: [{
+        dataFormat: 'FCB3',
+        decoded: {
+          issuingDetail: {
+            issuerNum: 3703,
+            issuingYear: 2025,
+            issuingDay: 44,
+            activated: true,
+            specimen: false,
+            securePaperTicket: false,
+          },
+          transportDocument: [
+            { ticket: { key: 'openTicket', value: { returnIncluded: false } } },
+          ],
+        },
+      }],
     },
   },
+};
+
+const ticketBytes = signAndEncodeTicket(
+  ticket,
   level1Key,
   level2Key, // omit for static barcodes (Level 1 only)
 );
@@ -170,9 +190,9 @@ For finer control, sign each level independently:
 ```ts
 import { signLevel1, signLevel2 } from 'dosipas-ts';
 
-const level1Sig = signLevel1(input, privateKey, 'P-256');
+const level1Sig = signLevel1(ticket, privateKey, 'P-256');
 const level2Sig = signLevel2(
-  { ...input, level1Signature: level1Sig },
+  { ...ticket, level2SignedData: { ...ticket.level2SignedData, level1Signature: level1Sig } },
   level2PrivateKey,
   'P-256',
 );
