@@ -198,6 +198,8 @@ const level2Sig = signLevel2(
 );
 ```
 
+For a fully composable encoding flow using the low-level primitives (`encodeLevel1Data`, `encodeLevel2SignedData`, `encodeUicBarcode`), see [`examples/encoder.ts`](examples/encoder.ts).
+
 ## Signature verification
 
 UIC barcodes use a two-level signature scheme:
