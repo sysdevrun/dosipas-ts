@@ -187,6 +187,7 @@ function getDefaultTicket(): UicBarcodeTicket {
               issuerNum: 9999,
               issuingYear: now.getFullYear(),
               issuingDay: dayOfYear,
+              issuingTime: now.getHours() * 60 + now.getMinutes(),
               specimen: true,
               securePaperTicket: false,
               activated: true,

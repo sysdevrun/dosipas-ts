@@ -349,6 +349,11 @@ function encodeRailTicket(fcbVersion: number, railTicket: UicRailTicketData, sec
     }
 
     issuingDetail = { ...issuingRest, extension };
+
+    // FCB3 requires issuingTime as mandatory — default to 0 if not provided
+    if (fcbVersion >= 3 && issuingDetail.issuingTime == null) {
+      issuingDetail.issuingTime = 0;
+    }
   }
 
   // Validate traveler birth-day fields match the target FCB version
