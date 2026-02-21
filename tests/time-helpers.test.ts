@@ -139,8 +139,8 @@ describe('getEndOfValidityTime', () => {
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getEndOfValidityTime(decoded);
     expect(time).toBeDefined();
-    // Day 200 of 2025 = July 19, 12:00 + 3600s = 13:00
-    expect(time!.toISOString()).toBe('2025-07-19T13:00:00.000Z');
+    // Day 200 of 2025 = July 19, 12:00 — validityDuration is NOT added
+    expect(time!.toISOString()).toBe('2025-07-19T12:00:00.000Z');
   });
 
   it('computes v2 end-of-validity from issuing time + validityDuration only', () => {

@@ -49,7 +49,8 @@ export function getIssuingTime(ticket: UicBarcodeTicket): Date | undefined {
  * Compute the end-of-validity timestamp as a UTC Date.
  *
  * - **v2 headers**: `endOfValidityYear` + `endOfValidityDay` +
- *   `endOfValidityTime` (minutes) + `validityDuration` (seconds).
+ *   `endOfValidityTime` (minutes).  `validityDuration` is ignored
+ *   when explicit end-of-validity fields are present.
  * - **v1 headers**: issuing time + `validityDuration` (seconds).
  *
  * Returns `undefined` when required fields are missing.
@@ -59,8 +60,7 @@ export function getEndOfValidityTime(ticket: UicBarcodeTicket): Date | undefined
 
   if (headerVersion(ticket) >= 2 && l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
     return new Date(
-      Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0)
-      + (l1.validityDuration ?? 0) * 1000,
+      Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0),
     );
   }
 
