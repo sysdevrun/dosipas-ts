@@ -404,8 +404,7 @@ describe('composable flow end-to-end', () => {
     const level1Sig = signPayload(level1Raw.data, l1Key.privateKey, 'P-256');
 
     // Step 3: Encode level2Data (FDC1)
-    const level2Data = encodeLevel2Data(l2!);
-    expect(level2Data.dataFormat).toBe('FDC1');
+    const level2Data = encodeLevel2Data(l2!, ticket.format);
 
     // Step 4: Encode level2SignedData with level2Data
     const headerVersion = parseInt(ticket.format.replace('U', ''), 10);

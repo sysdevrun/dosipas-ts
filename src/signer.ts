@@ -15,6 +15,7 @@ import { p256, p384, p521 } from '@noble/curves/nist.js';
 import { encodeLevel1Data, encodeLevel2Data, encodeLevel2SignedData, encodeUicBarcode, encodeTicketToBytes } from './encoder';
 import { extractSignedData } from './signed-data';
 import { rawToDer } from './signature-utils';
+import type { RawBytes } from 'asn1-per-ts';
 import type { UicBarcodeTicket, Level1Data } from './types';
 
 // ---------------------------------------------------------------------------
@@ -283,10 +284,10 @@ export function signAndEncodeTicket(
   const level1Sig = signPayload(level1Raw.data, level1Key.privateKey, level1Key.curve);
 
   // Step 3: Build level2Data if present
-  let level2DataEncoded: { dataFormat: string; data: Uint8Array } | undefined;
+  let level2DataEncoded: RawBytes | undefined;
   const l2 = ticket.level2SignedData.level2Data;
   if (l2) {
-    level2DataEncoded = encodeLevel2Data(l2);
+    level2DataEncoded = encodeLevel2Data(l2, ticket.format);
   }
 
   // Step 4: Encode level2SignedData

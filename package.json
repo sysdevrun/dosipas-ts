@@ -1,6 +1,6 @@
 {
   "name": "dosipas-ts",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "UIC barcode ticket encoder/decoder/verifier with Intercode 6 extensions",
   "type": "module",
   "exports": {

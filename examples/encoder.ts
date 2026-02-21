@@ -94,7 +94,7 @@ const level2DataEncoded = encodeLevel2Data({
   decoded: {
     dynamicContentTimeStamp: { day: 44, time: 720 },
   },
-});
+}, format);
 
 console.log('Level2Data encoded:', level2DataEncoded.data.length, 'bytes');
 

@@ -28,6 +28,7 @@ import type {
 const headerCodecCache = new Map<number, SchemaCodec>();
 const level1DataCodecCache = new Map<number, SchemaCodec>();
 const level2DataCodecCache = new Map<number, SchemaCodec>();
+const level2ContentCodecCache = new Map<number, SchemaCodec>();
 const ticketCodecCache = new Map<number, Record<string, Codec<unknown>>>();
 let intercodeIssuingCodec: SchemaCodec | undefined;
 let intercodeDynamicCodec: SchemaCodec | undefined;
@@ -60,6 +61,18 @@ function getLevel2DataCodec(version: number): SchemaCodec {
   if (!schemas) throw new Error(`No schema for header v${version}`);
   codec = new SchemaCodec(schemas.Level2DataType as SchemaNode);
   level2DataCodecCache.set(version, codec);
+  return codec;
+}
+
+function getLevel2ContentCodec(version: number): SchemaCodec {
+  let codec = level2ContentCodecCache.get(version);
+  if (codec) return codec;
+  const schemas = HEADER_SCHEMAS[version];
+  if (!schemas) throw new Error(`No schema for header v${version}`);
+  const l2Type = schemas.Level2DataType as any;
+  const l2ContentField = l2Type.fields.find((f: any) => f.name === 'level2Data');
+  codec = new SchemaCodec(l2ContentField.schema as SchemaNode);
+  level2ContentCodecCache.set(version, codec);
   return codec;
 }
 
@@ -134,17 +147,10 @@ export function encodeTicket(ticket: UicBarcodeTicket): string {
   });
 
   // Encode level2Data if present
-  let level2Data: { dataFormat: string; data: Uint8Array } | undefined;
+  let level2Data: RawBytes | undefined;
   const l2 = ticket.level2SignedData.level2Data;
   if (l2) {
-    if (l2.data) {
-      level2Data = { dataFormat: l2.dataFormat, data: l2.data };
-    } else if (l2.decoded) {
-      level2Data = {
-        dataFormat: l2.dataFormat,
-        data: encodeLevel2DataDecoded(l2.dataFormat, l2.decoded),
-      };
-    }
+    level2Data = encodeLevel2Data(l2, ticket.format);
   }
 
   // Build the full header structure
@@ -197,18 +203,25 @@ export function encodeTicketToBytes(ticket: UicBarcodeTicket): Uint8Array {
  * If the `data` field is present, it is used as-is. Otherwise the `decoded`
  * field is PER-encoded based on the `dataFormat`.
  *
+ * Returns a {@link RawBytes} with the exact PER-encoded bits. The `.data`
+ * property gives the `Uint8Array` suitable for signing; the `RawBytes` itself
+ * is passed to {@link encodeLevel2SignedData} for bit-precise embedding.
+ *
  * @param l2Data - Level 2 data with either raw `data` or `decoded` content.
- * @returns Object with `dataFormat` string and encoded `data` bytes.
+ * @param format - Header format string (e.g. "U1" or "U2").
+ * @returns RawBytes containing the PER-encoded level2Data SEQUENCE.
  */
 export function encodeLevel2Data(
   l2Data: Level2Data,
-): { dataFormat: string; data: Uint8Array } {
-  if (l2Data.data) return { dataFormat: l2Data.dataFormat, data: l2Data.data };
-  if (!l2Data.decoded) throw new Error('Level2Data must have data or decoded');
-  return {
-    dataFormat: l2Data.dataFormat,
-    data: encodeLevel2DataDecoded(l2Data.dataFormat, l2Data.decoded),
-  };
+  format: string,
+): RawBytes {
+  const headerVersion = parseHeaderVersion(format);
+  const data = l2Data.data ?? (() => {
+    if (!l2Data.decoded) throw new Error('Level2Data must have data or decoded');
+    return encodeLevel2DataDecoded(l2Data.dataFormat, l2Data.decoded);
+  })();
+  const codec = getLevel2ContentCodec(headerVersion);
+  return codec.encodeToRawBytes({ dataFormat: l2Data.dataFormat, data });
 }
 
 /**
@@ -266,7 +279,7 @@ export function encodeLevel2SignedData(input: {
   headerVersion?: number;
   level1Data: RawBytes;
   level1Signature: Uint8Array;
-  level2Data?: { dataFormat: string; data: Uint8Array };
+  level2Data?: RawBytes;
 }): RawBytes {
   const headerVersion = input.headerVersion ?? 2;
 
