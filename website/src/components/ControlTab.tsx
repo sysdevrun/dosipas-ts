@@ -369,7 +369,7 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
   const [showCamera, setShowCamera] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
-  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(false);
+  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(true);
   const [networkIds, setNetworkIds] = useState(loadNetworkIds);
   const { result, error, loading } = useTicketControl(hex, trustFipsKey, trustSysdevrunKey, networkIds);
 

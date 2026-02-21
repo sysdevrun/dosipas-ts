@@ -21,7 +21,8 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
   const [showHexViewer, setShowHexViewer] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
-  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(true);
   const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex, trustFipsKey, trustSysdevrunKey);
 
   useEffect(() => {
@@ -57,34 +58,45 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
         onOpenCamera={() => setShowCamera(true)}
       />
 
-      <label className="flex items-center gap-2 text-xs text-gray-600">
-        <input
-          type="checkbox"
-          checked={trustFipsKey}
-          onChange={(e) => setTrustFipsKey(e.target.checked)}
-          className="rounded border-gray-300"
-        />
-        Trust FIPS public key for level 1 as RICS 9999, key id 0
-      </label>
+      {/* Collapsible Settings section */}
+      <details
+        open={settingsOpen}
+        onToggle={(e) => setSettingsOpen((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer select-none text-xs font-semibold text-gray-500 uppercase tracking-wide hover:text-gray-700">
+          Settings
+        </summary>
+        <div className="mt-3 space-y-4 pl-1">
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustFipsKey}
+              onChange={(e) => setTrustFipsKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust FIPS public key for level 1 as RICS 9999, key id 0
+          </label>
 
-      <label className="flex items-center gap-2 text-xs text-gray-600">
-        <input
-          type="checkbox"
-          checked={trustSysdevrunKey}
-          onChange={(e) => setTrustSysdevrunKey(e.target.checked)}
-          className="rounded border-gray-300"
-        />
-        Trust{' '}
-        <a
-          href="https://sysdevrun-dosipas-webapp.web.app/"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-blue-600 hover:underline"
-        >
-          sysdevrun-dosipas
-        </a>{' '}
-        keys for RICS 9950
-      </label>
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustSysdevrunKey}
+              onChange={(e) => setTrustSysdevrunKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust{' '}
+            <a
+              href="https://sysdevrun-dosipas-webapp.web.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              sysdevrun-dosipas
+            </a>{' '}
+            keys for RICS 9950
+          </label>
+        </div>
+      </details>
 
       {showCamera && (
         <CameraScanner
