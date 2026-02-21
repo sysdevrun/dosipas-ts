@@ -369,8 +369,9 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
   const [showCamera, setShowCamera] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
+  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(false);
   const [networkIds, setNetworkIds] = useState(loadNetworkIds);
-  const { result, error, loading } = useTicketControl(hex, trustFipsKey, networkIds);
+  const { result, error, loading } = useTicketControl(hex, trustFipsKey, trustSysdevrunKey, networkIds);
 
   const handleEditInEncoder = () => {
     if (!result?.ticket) return;
@@ -422,6 +423,25 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
               className="rounded border-gray-300"
             />
             Trust FIPS public key for level 1 as RICS 9999, key id 0
+          </label>
+
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustSysdevrunKey}
+              onChange={(e) => setTrustSysdevrunKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust{' '}
+            <a
+              href="https://sysdevrun-dosipas-webapp.web.app/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 hover:underline"
+            >
+              sysdevrun-dosipas
+            </a>{' '}
+            keys for RICS 9950
           </label>
 
           <NetworkIdsEditor networkIds={networkIds} onChange={updateNetworkIds} />

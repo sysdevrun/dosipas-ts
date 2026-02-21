@@ -21,7 +21,8 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
   const [showHexViewer, setShowHexViewer] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
-  const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex, trustFipsKey);
+  const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(false);
+  const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex, trustFipsKey, trustSysdevrunKey);
 
   useEffect(() => {
     if (initialHex && initialHex !== hex) {
@@ -64,6 +65,25 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
           className="rounded border-gray-300"
         />
         Trust FIPS public key for level 1 as RICS 9999, key id 0
+      </label>
+
+      <label className="flex items-center gap-2 text-xs text-gray-600">
+        <input
+          type="checkbox"
+          checked={trustSysdevrunKey}
+          onChange={(e) => setTrustSysdevrunKey(e.target.checked)}
+          className="rounded border-gray-300"
+        />
+        Trust{' '}
+        <a
+          href="https://sysdevrun-dosipas-webapp.web.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 hover:underline"
+        >
+          sysdevrun-dosipas
+        </a>{' '}
+        keys for RICS 9950
       </label>
 
       {showCamera && (
