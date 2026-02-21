@@ -24,6 +24,10 @@ dosipas-ts is a TypeScript npm module for encoding, decoding, and verifying UIC 
 - Test files live in `tests/` (not colocated)
 - JSON schemas are imported at build time via `resolveJsonModule`
 
+## Changelog
+
+- Update `CHANGELOG.md` when making user-facing changes (new features, breaking changes, bug fixes)
+
 ## Dependencies
 
 - `asn1-per-ts` — Low-level ASN.1 PER codec (from npm)
