@@ -16,6 +16,7 @@ import type {
   CheckResult,
   ControlResult,
   ControlOptions,
+  OpenTicketData,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -432,6 +433,123 @@ function checkDynamicContentFreshness(
 }
 
 // ---------------------------------------------------------------------------
+// Zone & carrier check helpers
+// ---------------------------------------------------------------------------
+
+/** Get all openTicket transport documents from the first rail ticket. */
+function getOpenTickets(ticket: UicBarcodeTicket): OpenTicketData[] {
+  const docs = firstRailTicket(ticket)?.transportDocument;
+  if (!docs) return [];
+  return docs
+    .filter((d): d is { ticket: { key: 'openTicket'; value: OpenTicketData } } & typeof d =>
+      d.ticket.key === 'openTicket')
+    .map(d => d.ticket.value);
+}
+
+/** Check whether an open ticket authorizes ALL expected carriers. */
+function carriersMatch(
+  ot: OpenTicketData,
+  expected: Array<number | string>,
+): boolean {
+  return expected.every(carrier => {
+    // Check top-level OpenTicketData carrier lists
+    if (typeof carrier === 'number') {
+      if (ot.carrierNum?.includes(carrier)) return true;
+      if (ot.productOwnerNum === carrier) return true;
+    } else {
+      if (ot.carrierIA5?.includes(carrier)) return true;
+      if (ot.productOwnerIA5 === carrier) return true;
+    }
+
+    // Check validRegion entries for carrier
+    if (ot.validRegion) {
+      for (const region of ot.validRegion) {
+        if (region.key === 'zones' || region.key === 'lines') {
+          if (typeof carrier === 'number' && region.value.carrierNum === carrier) return true;
+          if (typeof carrier === 'string' && region.value.carrierIA5 === carrier) return true;
+        } else if (region.key === 'viaStations') {
+          if (typeof carrier === 'number' && region.value.carrierNum?.includes(carrier)) return true;
+          if (typeof carrier === 'string' && region.value.carrierIA5?.includes(carrier)) return true;
+        }
+      }
+    }
+    return false;
+  });
+}
+
+/** Check whether an open ticket authorizes ALL expected zones. */
+function zonesMatch(
+  ot: OpenTicketData,
+  expected: Array<number | string>,
+): boolean {
+  if (!ot.validRegion) return false;
+
+  const allZoneIds = new Set<number>();
+  const allNutsCodes = new Set<string>();
+
+  for (const region of ot.validRegion) {
+    if (region.key !== 'zones') continue;
+    if (region.value.zoneId) region.value.zoneId.forEach(id => allZoneIds.add(id));
+    if (region.value.nutsCode) allNutsCodes.add(region.value.nutsCode);
+  }
+
+  return expected.every(zone => {
+    if (typeof zone === 'number') return allZoneIds.has(zone);
+    return allNutsCodes.has(zone);
+  });
+}
+
+function checkZonesAndCarriers(
+  ticket: UicBarcodeTicket,
+  options: ControlOptions,
+): CheckResult {
+  const expectedCarriers = options.expectedCarriers;
+  const expectedZones = options.expectedZones;
+
+  if (!expectedCarriers?.length && !expectedZones?.length) {
+    return {
+      name: 'Zones & Carriers',
+      passed: true,
+      severity: 'info',
+      message: 'No zone/carrier constraints specified',
+    };
+  }
+
+  const openTickets = getOpenTickets(ticket);
+  if (openTickets.length === 0) {
+    return {
+      name: 'Zones & Carriers',
+      passed: false,
+      severity: 'error',
+      message: 'No openTicket transport documents found',
+    };
+  }
+
+  for (const ot of openTickets) {
+    const carrierOk = !expectedCarriers?.length || carriersMatch(ot, expectedCarriers);
+    const zonesOk   = !expectedZones?.length    || zonesMatch(ot, expectedZones);
+    if (carrierOk && zonesOk) {
+      return {
+        name: 'Zones & Carriers',
+        passed: true,
+        severity: 'error',
+      };
+    }
+  }
+
+  const issues: string[] = [];
+  if (expectedCarriers?.length) issues.push(`carriers: ${expectedCarriers.join(', ')}`);
+  if (expectedZones?.length)    issues.push(`zones: ${expectedZones.join(', ')}`);
+
+  return {
+    name: 'Zones & Carriers',
+    passed: false,
+    severity: 'error',
+    message: `No openTicket covers the expected ${issues.join(' and ')}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -512,6 +630,9 @@ export async function controlTicket(
 
   // 13. Dynamic Content Freshness
   checks.dynamicContentFreshness = checkDynamicContentFreshness(ticket, now);
+
+  // 14. Zones & Carriers
+  checks.zonesAndCarriers = checkZonesAndCarriers(ticket, opts);
 
   // Compute overall validity: all error-severity checks must pass
   const valid = Object.values(checks).every(

@@ -29,6 +29,9 @@ function makeTicket(opts: {
   issuingDay: number;
   specimen?: boolean;
   activated?: boolean;
+  openTicketValue?: Record<string, unknown>;
+  /** When set, use this ticket key instead of 'openTicket'. */
+  ticketKey?: string;
 }): UicBarcodeTicket {
   return {
     format: 'U2',
@@ -50,7 +53,12 @@ function makeTicket(opts: {
               activated: opts.activated ?? true,
             },
             transportDocument: [
-              { ticket: { key: 'openTicket', value: { returnIncluded: false } } },
+              {
+                ticket: {
+                  key: opts.ticketKey ?? 'openTicket',
+                  value: opts.openTicketValue ?? { returnIncluded: false },
+                },
+              },
             ],
           },
         }],
@@ -345,15 +353,184 @@ describe('controlTicket — overall validity', () => {
     expect(result.valid).toBe(false);
   });
 
-  it('all 13 checks are present', async () => {
+  it('all 14 checks are present', async () => {
     const result = await controlTicket(SAMPLE_TICKET_HEX);
     const expectedKeys = [
       'decode', 'header', 'securityInfo', 'level1Signature', 'level2Signature',
       'notExpired', 'notSpecimen', 'activated', 'issuingDetail',
       'transportDocument', 'intercodeExtension', 'dynamicData', 'dynamicContentFreshness',
+      'zonesAndCarriers',
     ];
     for (const key of expectedKeys) {
       expect(result.checks[key]).toBeDefined();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Zones & Carriers validation
+// ---------------------------------------------------------------------------
+
+describe('controlTicket — zones & carriers', () => {
+  const baseOpts = {
+    issuingYear: 2025,
+    issuingDay: 100,
+    endOfValidityYear: 2099,
+    endOfValidityDay: 365,
+  };
+
+  async function controlWithOpenTicket(
+    openTicketValue: Record<string, unknown>,
+    controlOpts?: Partial<import('../src').ControlOptions>,
+    ticketKey?: string,
+  ) {
+    const keys = generateKeyPair('P-256');
+    const ticket = makeTicket({ ...baseOpts, openTicketValue, ticketKey });
+    const encoded = signAndEncodeTicket(ticket, keys);
+    const hex = bytesToHex(encoded);
+    return controlTicket(hex, controlOpts);
+  }
+
+  it('passes with no constraints specified (info)', async () => {
+    const result = await controlWithOpenTicket({ returnIncluded: false });
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+    expect(result.checks.zonesAndCarriers.severity).toBe('info');
+  });
+
+  it('passes when expected carriers match top-level carrierNum', async () => {
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, carrierNum: [1080] },
+      { expectedCarriers: [1080] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('fails when expected carriers do not match', async () => {
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, carrierNum: [1080] },
+      { expectedCarriers: [9999] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(false);
+    expect(result.checks.zonesAndCarriers.severity).toBe('error');
+  });
+
+  it('passes when expected carriers match via productOwnerNum', async () => {
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, productOwnerNum: 1080 },
+      { expectedCarriers: [1080] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('passes when expected carriers match via IA5', async () => {
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, carrierIA5: ['SNCF'] },
+      { expectedCarriers: ['SNCF'] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('passes when expected zones match zoneId', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validRegion: [
+          { key: 'zones', value: { zoneId: [1, 2, 3] } },
+        ],
+      },
+      { expectedZones: [1, 2] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('fails when expected zones are partially missing', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validRegion: [
+          { key: 'zones', value: { zoneId: [1, 2] } },
+        ],
+      },
+      { expectedZones: [1, 2, 5] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(false);
+  });
+
+  it('passes when multiple zone entries are aggregated', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validRegion: [
+          { key: 'zones', value: { zoneId: [1, 2] } },
+          { key: 'zones', value: { zoneId: [3, 4] } },
+        ],
+      },
+      { expectedZones: [1, 3] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('passes when both zones AND carriers are satisfied', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        carrierNum: [1080],
+        validRegion: [
+          { key: 'zones', value: { zoneId: [1, 2, 3] } },
+        ],
+      },
+      { expectedCarriers: [1080], expectedZones: [1, 2] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('fails when carrier matches but zone does not', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        carrierNum: [1080],
+        validRegion: [
+          { key: 'zones', value: { zoneId: [1, 2] } },
+        ],
+      },
+      { expectedCarriers: [1080], expectedZones: [99] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(false);
+  });
+
+  it('passes when carrier is found in validRegion zones entry', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validRegion: [
+          { key: 'zones', value: { carrierNum: 1080, zoneId: [1, 2] } },
+        ],
+      },
+      { expectedCarriers: [1080] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+
+  it('fails when no openTicket document exists', async () => {
+    const result = await controlWithOpenTicket(
+      { departureTime: 0 },
+      { expectedZones: [1] },
+      'reservation',
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(false);
+    expect(result.checks.zonesAndCarriers.message).toContain('No openTicket');
+  });
+
+  it('passes with string-based zone matching via nutsCode', async () => {
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validRegion: [
+          { key: 'zones', value: { nutsCode: 'FR101' } },
+        ],
+      },
+      { expectedZones: ['FR101'] },
+    );
+    expect(result.checks.zonesAndCarriers.passed).toBe(true);
   });
 });

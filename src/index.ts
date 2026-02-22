@@ -19,6 +19,7 @@ export type {
   GeoCoordinate,
   ExtensionData,
   TransportDocumentData,
+  TransportDocumentTicket,
   IntercodeIssuingData,
   IntercodeDynamicData,
   UicDynamicContentData,
@@ -40,6 +41,11 @@ export type {
   ControlOptions,
   ControlResult,
   CheckResult,
+  OpenTicketData,
+  ValidRegionChoice,
+  ZoneData,
+  LineData,
+  ViaStationData,
 } from './types';
 
 export type { UicPublicKeyEntry } from './verifier';

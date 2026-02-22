@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0]
+
+### New Features
+
+- **`controlTicket` — zone & carrier validation**: New `expectedZones` and
+  `expectedCarriers` options verify that at least one `openTicket` transport
+  document covers the specified zones and carriers. Useful for network pass
+  and zonal pass control.
+- **New TypeScript types**: `OpenTicketData`, `ZoneData`, `LineData`,
+  `ViaStationData`, `ValidRegionChoice` — typed representations of the
+  decoded OpenTicketData ASN.1 structure and its validRegion alternatives.
+
 ## [1.4.0]
 
 ### Breaking Changes

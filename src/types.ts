@@ -127,12 +127,17 @@ export interface ExtensionData {
 // Transport document — matches ASN.1 schema
 // ---------------------------------------------------------------------------
 
+/** Discriminated union for the ticket CHOICE within a transport document. */
+export type TransportDocumentTicket =
+  | { key: 'openTicket'; value: OpenTicketData }
+  | { key: string;       value: Record<string, unknown> };
+
 /** Transport document entry. Matches the SEQUENCE { token, ticket } in the schema. */
 export interface TransportDocumentData {
   /** Token data (optional in schema). */
   token?: Record<string, unknown>;
   /** The CHOICE-encoded ticket (variant name as `key`, variant data as `value`). */
-  ticket: { key: string; value: Record<string, unknown> };
+  ticket: TransportDocumentTicket;
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +296,102 @@ export interface UicDynamicContentData {
 }
 
 // ---------------------------------------------------------------------------
+// OpenTicketData — typed view over TransportDocumentData.ticket.value
+// when ticket.key === 'openTicket'
+// ---------------------------------------------------------------------------
+
+/** Typed representation of the decoded OpenTicketData SEQUENCE. */
+export interface OpenTicketData {
+  referenceNum?: number;
+  referenceIA5?: string;
+  productOwnerNum?: number;
+  productOwnerIA5?: string;
+  productIdNum?: number;
+  productIdIA5?: string;
+  extIssuerId?: number;
+  issuerAuthorizationId?: number;
+  returnIncluded: boolean;
+  stationCodeTable?: string;
+  fromStationNum?: number;
+  fromStationIA5?: string;
+  toStationNum?: number;
+  toStationIA5?: string;
+  fromStationNameUTF8?: string;
+  toStationNameUTF8?: string;
+  validRegionDesc?: string;
+  validRegion?: ValidRegionChoice[];
+  returnDescription?: Record<string, unknown>;
+  validFromDay?: number;
+  validFromTime?: number;
+  validFromUTCOffset?: number;
+  validUntilDay?: number;
+  validUntilTime?: number;
+  validUntilUTCOffset?: number;
+  activatedDay?: number[];
+  classCode?: string;
+  serviceLevel?: string;
+  carrierNum?: number[];
+  carrierIA5?: string[];
+  includedServiceBrands?: number[];
+  excludedServiceBrands?: number[];
+  tariffs?: Record<string, unknown>[];
+  price?: number;
+  infoText?: string;
+}
+
+/** CHOICE from the validRegion SEQUENCE OF — discriminated union on `key`. */
+export type ValidRegionChoice =
+  | { key: 'zones';       value: ZoneData }
+  | { key: 'lines';       value: LineData }
+  | { key: 'viaStations'; value: ViaStationData }
+  | { key: 'trainLink';   value: Record<string, unknown> }
+  | { key: 'polygone';    value: Record<string, unknown> };
+
+/** "zones" alternative within validRegion. */
+export interface ZoneData {
+  carrierNum?: number;
+  carrierIA5?: string;
+  stationCodeTable?: string;
+  entryStationNum?: number;
+  entryStationIA5?: string;
+  terminatingStationNum?: number;
+  terminatingStationIA5?: string;
+  city?: number;
+  zoneId?: number[];
+  binaryZoneId?: Uint8Array;
+  nutsCode?: string;
+}
+
+/** "lines" alternative within validRegion. */
+export interface LineData {
+  carrierNum?: number;
+  carrierIA5?: string;
+  lineId?: number[];
+  stationCodeTable?: string;
+  entryStationNum?: number;
+  entryStationIA5?: string;
+  terminatingStationNum?: number;
+  terminatingStationIA5?: string;
+  city?: number;
+}
+
+/** "viaStations" alternative within validRegion. */
+export interface ViaStationData {
+  stationCodeTable?: string;
+  stationNum?: number;
+  stationIA5?: string;
+  border?: boolean;
+  carrierNum?: number[];
+  carrierIA5?: string[];
+  seriesId?: number;
+  routeId?: number;
+  includedServiceBrands?: number[];
+  excludedServiceBrands?: number[];
+  alternativeRoutes?: ViaStationData[];
+  route?: ViaStationData[];
+}
+
+// ---------------------------------------------------------------------------
 // Ticket control types
 // ---------------------------------------------------------------------------
 
@@ -306,6 +407,17 @@ export interface ControlOptions {
    * match one of the expected values.
    */
   expectedIntercodeNetworkIds?: Set<string>;
+  /**
+   * Expected/allowed carrier identifiers (RICS codes as numbers and/or IA5 strings).
+   * When provided, at least one openTicket must authorize all of these carriers.
+   */
+  expectedCarriers?: Array<number | string>;
+  /**
+   * Expected/allowed zone identifiers (integer zone IDs or NUTS code strings).
+   * When provided, at least one openTicket must contain a `zones` validRegion
+   * entry whose `zoneId` array includes all of the expected zones.
+   */
+  expectedZones?: Array<number | string>;
 }
 
 /** Result of a single validation check. */
