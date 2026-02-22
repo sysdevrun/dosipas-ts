@@ -12,13 +12,8 @@ import type {
 } from './types';
 
 // ---------------------------------------------------------------------------
-// Internal accessors (duplicated from control.ts to avoid coupling)
+// Internal accessors
 // ---------------------------------------------------------------------------
-
-function headerVersion(ticket: UicBarcodeTicket): number {
-  const m = ticket.format.match(/^U(\d)$/);
-  return m ? parseInt(m[1], 10) : 0;
-}
 
 function firstRailTicket(ticket: UicBarcodeTicket): UicRailTicketData | undefined {
   for (const entry of ticket.level2SignedData.level1Data.dataSequence) {
@@ -48,28 +43,21 @@ export function getIssuingTime(ticket: UicBarcodeTicket): Date | undefined {
 /**
  * Compute the end-of-validity timestamp as a UTC Date.
  *
- * - **v2 headers**: `endOfValidityYear` + `endOfValidityDay` +
- *   `endOfValidityTime` (minutes).  `validityDuration` is ignored
- *   when explicit end-of-validity fields are present.
- * - **v1 headers**: issuing time + `validityDuration` (seconds).
+ * Uses only the explicit `endOfValidityYear` + `endOfValidityDay` +
+ * `endOfValidityTime` (minutes) fields from the header.
+ *
+ * `validityDuration` is **not** used here — it represents the
+ * level 2 dynamic content validity duration, not the ticket end of validity.
  *
  * Returns `undefined` when required fields are missing.
  */
 export function getEndOfValidityTime(ticket: UicBarcodeTicket): Date | undefined {
   const l1 = ticket.level2SignedData.level1Data;
 
-  if (headerVersion(ticket) >= 2 && l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
+  if (l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
     return new Date(
       Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0),
     );
-  }
-
-  // v1: issuing time + validityDuration
-  if (l1.validityDuration != null) {
-    const issuing = getIssuingTime(ticket);
-    if (issuing) {
-      return new Date(issuing.getTime() + l1.validityDuration * 1000);
-    }
   }
 
   return undefined;

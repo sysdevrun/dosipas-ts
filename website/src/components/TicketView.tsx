@@ -155,8 +155,8 @@ function Level1DataSection({ l1, endOfValidity }: { l1: Level1Data; endOfValidit
       <Field label="endOfValidityYear" value={l1.endOfValidityYear} />
       <Field label="endOfValidityDay" value={l1.endOfValidityDay} />
       <Field label="endOfValidityTime" value={l1.endOfValidityTime} />
-      <Field label="validityDuration" value={l1.validityDuration} />
       <ComputedTime label="end of validity" date={endOfValidity} />
+      <Field label="validityDuration" value={l1.validityDuration} />
     </Section>
   );
 }

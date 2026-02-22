@@ -2,6 +2,10 @@
 
 ## [1.5.0]
 
+### Bug Fixes
+
+- **`getEndOfValidityTime`**: No longer falls back to `issuingTime + validityDuration` when `endOfValidityYear`/`endOfValidityDay` fields are absent. `validityDuration` is a level 2 dynamic content duration, not a ticket end-of-validity. The function now returns `undefined` when explicit end-of-validity fields are missing.
+
 ### New Features
 
 - **`controlTicket` — zone & carrier validation**: New `expectedZones` and

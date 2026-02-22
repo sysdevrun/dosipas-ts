@@ -143,20 +143,19 @@ describe('getEndOfValidityTime', () => {
     expect(time!.toISOString()).toBe('2025-07-19T12:00:00.000Z');
   });
 
-  it('computes v2 end-of-validity from issuing time + validityDuration only', () => {
+  it('returns undefined when only validityDuration is present (no endOfValidity fields)', () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
       issuingDay: 1,
       issuingTime: 60, // 1:00 AM
-      validityDuration: 600, // 600 seconds = 10 minutes
+      validityDuration: 600, // 600 seconds — level2 dynamic duration, not used here
     });
     const encoded = signAndEncodeTicket(ticket, keys);
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getEndOfValidityTime(decoded);
-    expect(time).toBeDefined();
-    // Jan 1 2025 01:00 + 10 min = 01:10
-    expect(time!.toISOString()).toBe('2025-01-01T01:10:00.000Z');
+    // validityDuration alone does not produce an end-of-validity
+    expect(time).toBeUndefined();
   });
 
   it('returns undefined when no validity duration and no end-of-validity fields', () => {
