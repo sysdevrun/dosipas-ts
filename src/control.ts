@@ -7,7 +7,7 @@
  */
 import { decodeTicket } from './decoder';
 import { verifyLevel1Signature, verifyLevel2Signature } from './verifier';
-import { getEndOfValidityTime, getDynamicContentTime } from './time-helpers';
+import { getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers';
 import type {
   UicBarcodeTicket,
   UicRailTicketData,
@@ -550,6 +550,71 @@ function checkZonesAndCarriers(
 }
 
 // ---------------------------------------------------------------------------
+// Open ticket validity window check
+// ---------------------------------------------------------------------------
+
+function checkOpenTicketValidity(
+  ticket: UicBarcodeTicket,
+  now: Date,
+): CheckResult {
+  const openTickets = getOpenTickets(ticket);
+  if (openTickets.length === 0) {
+    return {
+      name: 'Open Ticket Validity',
+      passed: true,
+      severity: 'info',
+      message: 'No openTicket transport documents — skipping validity window check',
+    };
+  }
+
+  const issuingDetail = firstRailTicket(ticket)?.issuingDetail;
+  if (!issuingDetail) {
+    return {
+      name: 'Open Ticket Validity',
+      passed: true,
+      severity: 'info',
+      message: 'Cannot determine validity window — missing issuingDetail',
+    };
+  }
+
+  const nowMs = now.getTime();
+  const windows: Array<{ validFrom: Date; validUntil: Date }> = [];
+
+  for (const ot of openTickets) {
+    const window = getOpenTicketValidityWindow(ot, issuingDetail);
+    if (!window) continue;
+    windows.push(window);
+    if (window.validFrom.getTime() <= nowMs && nowMs <= window.validUntil.getTime()) {
+      return {
+        name: 'Open Ticket Validity',
+        passed: true,
+        severity: 'error',
+      };
+    }
+  }
+
+  if (windows.length === 0) {
+    return {
+      name: 'Open Ticket Validity',
+      passed: true,
+      severity: 'info',
+      message: 'Cannot determine validity window — missing issuingDetail fields',
+    };
+  }
+
+  const windowDescs = windows
+    .map(w => `${w.validFrom.toISOString()} → ${w.validUntil.toISOString()}`)
+    .join(', ');
+
+  return {
+    name: 'Open Ticket Validity',
+    passed: false,
+    severity: 'error',
+    message: `Current time ${now.toISOString()} is outside validity window(s): ${windowDescs}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main entry point
 // ---------------------------------------------------------------------------
 
@@ -633,6 +698,9 @@ export async function controlTicket(
 
   // 14. Zones & Carriers
   checks.zonesAndCarriers = checkZonesAndCarriers(ticket, opts);
+
+  // 15. Open Ticket Validity Window
+  checks.openTicketValidity = checkOpenTicketValidity(ticket, now);
 
   // Compute overall validity: all error-severity checks must pass
   const valid = Object.values(checks).every(

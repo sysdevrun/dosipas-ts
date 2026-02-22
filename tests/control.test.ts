@@ -353,13 +353,13 @@ describe('controlTicket — overall validity', () => {
     expect(result.valid).toBe(false);
   });
 
-  it('all 14 checks are present', async () => {
+  it('all 15 checks are present', async () => {
     const result = await controlTicket(SAMPLE_TICKET_HEX);
     const expectedKeys = [
       'decode', 'header', 'securityInfo', 'level1Signature', 'level2Signature',
       'notExpired', 'notSpecimen', 'activated', 'issuingDetail',
       'transportDocument', 'intercodeExtension', 'dynamicData', 'dynamicContentFreshness',
-      'zonesAndCarriers',
+      'zonesAndCarriers', 'openTicketValidity',
     ];
     for (const key of expectedKeys) {
       expect(result.checks[key]).toBeDefined();
@@ -532,5 +532,149 @@ describe('controlTicket — zones & carriers', () => {
       { expectedZones: ['FR101'] },
     );
     expect(result.checks.zonesAndCarriers.passed).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Open ticket validity window
+// ---------------------------------------------------------------------------
+
+describe('controlTicket — open ticket validity', () => {
+  const baseOpts = {
+    issuingYear: 2025,
+    issuingDay: 100, // April 10
+    endOfValidityYear: 2099,
+    endOfValidityDay: 365,
+  };
+
+  async function controlWithOpenTicket(
+    openTicketValue: Record<string, unknown>,
+    controlOpts?: Partial<import('../src').ControlOptions>,
+    ticketKey?: string,
+  ) {
+    const keys = generateKeyPair('P-256');
+    const ticket = makeTicket({ ...baseOpts, openTicketValue, ticketKey });
+    const encoded = signAndEncodeTicket(ticket, keys);
+    const hex = bytesToHex(encoded);
+    return controlTicket(hex, controlOpts);
+  }
+
+  it('passes when now is within validity window', async () => {
+    // validFrom = day 100 (Apr 10) 00:00, validUntil = day 100 + 365 days + 1439 min
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, validFromDay: 0, validFromTime: 0, validUntilDay: 365, validUntilTime: 1439 },
+      { now: new Date('2025-06-15T12:00:00Z') },
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(true);
+  });
+
+  it('fails when now is before validity window', async () => {
+    // Ticket valid from day+10 to day+20
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, validFromDay: 10, validFromTime: 0, validUntilDay: 10, validUntilTime: 1439 },
+      { now: new Date('2025-04-10T00:00:00Z') }, // Apr 10, ticket starts Apr 20
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(false);
+    expect(result.checks.openTicketValidity.severity).toBe('error');
+    expect(result.checks.openTicketValidity.message).toContain('outside validity window');
+  });
+
+  it('fails when now is after validity window', async () => {
+    // Ticket valid on issuing day only
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, validFromDay: 0, validFromTime: 0, validUntilDay: 0, validUntilTime: 1439 },
+      { now: new Date('2025-04-11T12:00:00Z') }, // Apr 11, ticket ended Apr 10 23:59
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(false);
+    expect(result.checks.openTicketValidity.severity).toBe('error');
+  });
+
+  it('passes with info when no openTicket exists (reservation)', async () => {
+    const result = await controlWithOpenTicket(
+      { departureTime: 0 },
+      { now: new Date('2025-06-15T12:00:00Z') },
+      'reservation',
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(true);
+    expect(result.checks.openTicketValidity.severity).toBe('info');
+    expect(result.checks.openTicketValidity.message).toContain('No openTicket');
+  });
+
+  it('defaults to full day when no times are set', async () => {
+    // validFromDay=0, validUntilDay=0 → issuing day 00:00 to 23:59
+    const result = await controlWithOpenTicket(
+      { returnIncluded: false, validFromDay: 0, validUntilDay: 0 },
+      { now: new Date('2025-04-10T15:30:00Z') }, // Apr 10 15:30, should be in range
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(true);
+  });
+
+  it('applies UTC offset correctly', async () => {
+    // validFromTime=600 (10:00 local), offset=4 (+1h) → 09:00 UTC
+    // validUntilTime=720 (12:00 local), offset=4 (+1h) → 11:00 UTC
+    const result = await controlWithOpenTicket(
+      {
+        returnIncluded: false,
+        validFromDay: 0, validFromTime: 600, validFromUTCOffset: 4,
+        validUntilDay: 0, validUntilTime: 720,
+        // validUntilUTCOffset absent → falls back to validFromUTCOffset
+      },
+      { now: new Date('2025-04-10T10:00:00Z') }, // 10:00 UTC, between 09:00-11:00
+    );
+    expect(result.checks.openTicketValidity.passed).toBe(true);
+  });
+
+  it('passes when one of multiple openTickets is valid', async () => {
+    // Build a ticket with two openTickets manually
+    const keys = generateKeyPair('P-256');
+    const ticket: UicBarcodeTicket = {
+      format: 'U2',
+      level2SignedData: {
+        level1Data: {
+          securityProviderNum: 9999,
+          keyId: 0,
+          endOfValidityYear: 2099,
+          endOfValidityDay: 365,
+          dataSequence: [{
+            dataFormat: 'FCB2',
+            decoded: {
+              issuingDetail: {
+                issuingYear: 2025,
+                issuingDay: 100,
+                specimen: false,
+                securePaperTicket: false,
+                activated: true,
+              },
+              transportDocument: [
+                {
+                  ticket: {
+                    key: 'openTicket',
+                    value: {
+                      returnIncluded: false,
+                      validFromDay: 0, validFromTime: 0,
+                      validUntilDay: 0, validUntilTime: 60, // Expired: Apr 10 00:00-01:00
+                    },
+                  },
+                },
+                {
+                  ticket: {
+                    key: 'openTicket',
+                    value: {
+                      returnIncluded: false,
+                      validFromDay: 0, validFromTime: 0,
+                      validUntilDay: 365, validUntilTime: 1439, // Valid: full year
+                    },
+                  },
+                },
+              ],
+            },
+          }],
+        },
+      },
+    };
+    const encoded = signAndEncodeTicket(ticket, keys);
+    const hex = bytesToHex(encoded);
+    const result = await controlTicket(hex, { now: new Date('2025-06-15T12:00:00Z') });
+    expect(result.checks.openTicketValidity.passed).toBe(true);
   });
 });

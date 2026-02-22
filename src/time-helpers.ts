@@ -9,6 +9,8 @@ import type {
   UicRailTicketData,
   UicDynamicContentData,
   IntercodeDynamicData,
+  OpenTicketData,
+  IssuingDetail,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -100,4 +102,40 @@ export function getDynamicContentTime(ticket: UicBarcodeTicket): Date | undefine
   }
 
   return undefined;
+}
+
+/**
+ * Compute the validFrom and validUntil absolute timestamps (UTC)
+ * for an OpenTicketData, given the issuing detail.
+ *
+ * Follows UIC IRS 90918-9 semantics:
+ * - `validFromDay` defaults to 0 (same day as issuing).
+ * - `validFromTime` absent → 0 (start of day, 00:00).
+ * - `validUntilDay` defaults to 0 (same day as validFrom).
+ * - `validUntilTime` absent → 1439 (end of day, 23:59).
+ * - `validUntilUTCOffset` absent → falls back to `validFromUTCOffset`, then 0.
+ *
+ * Returns `undefined` when `issuingDetail` is missing required fields.
+ */
+export function getOpenTicketValidityWindow(
+  openTicket: OpenTicketData,
+  issuingDetail: IssuingDetail,
+): { validFrom: Date; validUntil: Date } | undefined {
+  if (issuingDetail.issuingYear == null || issuingDetail.issuingDay == null) {
+    return undefined;
+  }
+
+  const issuingDate = Date.UTC(issuingDetail.issuingYear, 0, issuingDetail.issuingDay);
+
+  const validFromDate = issuingDate + (openTicket.validFromDay ?? 0) * 86_400_000;
+  const validFrom = validFromDate
+    + (openTicket.validFromTime ?? 0) * 60_000
+    - (openTicket.validFromUTCOffset ?? 0) * 15 * 60_000;
+
+  const validUntilDate = validFromDate + (openTicket.validUntilDay ?? 0) * 86_400_000;
+  const validUntil = validUntilDate
+    + (openTicket.validUntilTime ?? 1439) * 60_000
+    - (openTicket.validUntilUTCOffset ?? openTicket.validFromUTCOffset ?? 0) * 15 * 60_000;
+
+  return { validFrom: new Date(validFrom), validUntil: new Date(validUntil) };
 }

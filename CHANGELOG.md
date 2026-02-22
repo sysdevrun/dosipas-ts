@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### New Features
+
+- **`controlTicket` — open ticket validity window**: New `openTicketValidity`
+  check (check #15) validates that the current time falls within the
+  `validFrom → validUntil` window of at least one openTicket transport document.
+  Previously, tickets presented outside their valid travel period were not
+  detected. Follows UIC IRS 90918-9 semantics: `validFromTime` absent defaults
+  to 0 (00:00), `validUntilTime` absent defaults to 1439 (23:59).
+- **New helper**: `getOpenTicketValidityWindow()` computes the absolute
+  validity window (UTC) for an OpenTicketData given its issuing detail.
+
 ### Bug Fixes
 
 - **CLI `decode-ticket.ts`**: Fixed crash caused by references to removed types (`SecurityInfo`, `RailTicketData`) and nonexistent properties (`ticket.security`, `ticket.railTickets`, etc.). The CLI now uses the actual `UicBarcodeTicket` type hierarchy (`level2SignedData.level1Data`, `dataSequence[].decoded`, etc.). Also added computed timestamp display (issuing time, end of validity, dynamic content time).
