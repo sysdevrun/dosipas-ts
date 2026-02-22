@@ -61,13 +61,18 @@ export interface OpenTicketData {
 ```
  
 ### 1b. `ValidRegionChoice` and sub-types
- 
+
+Use a **discriminated union** on `key` so TypeScript narrows `value`
+automatically in `switch`/`if` blocks:
+
 ```typescript
-/** CHOICE from the validRegion SEQUENCE OF. Each element is one of: */
-export interface ValidRegionChoice {
-  key: string;                     // "zones" | "lines" | "viaStations" | "trainLink" | "polygone"
-  value: ZoneData | LineData | ViaStationData | Record<string, unknown>;
-}
+/** CHOICE from the validRegion SEQUENCE OF — discriminated union on `key`. */
+export type ValidRegionChoice =
+  | { key: 'zones';       value: ZoneData }
+  | { key: 'lines';       value: LineData }
+  | { key: 'viaStations'; value: ViaStationData }
+  | { key: 'trainLink';   value: Record<string, unknown> }
+  | { key: 'polygone';    value: Record<string, unknown> };
  
 /** "zones" alternative within validRegion. */
 export interface ZoneData {
@@ -256,16 +261,17 @@ function carriersMatch(
     }
  
     // Check validRegion entries for carrier
+    // Discriminated union lets us narrow by region.key — no `as any` needed
     if (ot.validRegion) {
       for (const region of ot.validRegion) {
-        const v = region.value as any;
-        if (typeof carrier === 'number') {
-          // zones and lines have single carrierNum; viaStations has carrierNum[]
-          if (v.carrierNum === carrier) return true;
-          if (Array.isArray(v.carrierNum) && v.carrierNum.includes(carrier)) return true;
-        } else {
-          if (v.carrierIA5 === carrier) return true;
-          if (Array.isArray(v.carrierIA5) && v.carrierIA5.includes(carrier)) return true;
+        if (region.key === 'zones' || region.key === 'lines') {
+          // zones and lines have single carrierNum/carrierIA5
+          if (typeof carrier === 'number' && region.value.carrierNum === carrier) return true;
+          if (typeof carrier === 'string' && region.value.carrierIA5 === carrier) return true;
+        } else if (region.key === 'viaStations') {
+          // viaStations has carrierNum[] and carrierIA5[]
+          if (typeof carrier === 'number' && region.value.carrierNum?.includes(carrier)) return true;
+          if (typeof carrier === 'string' && region.value.carrierIA5?.includes(carrier)) return true;
         }
       }
     }
@@ -286,9 +292,9 @@ function zonesMatch(
  
   for (const region of ot.validRegion) {
     if (region.key !== 'zones') continue;
-    const z = region.value as ZoneData;
-    if (z.zoneId) z.zoneId.forEach(id => allZoneIds.add(id));
-    if (z.nutsCode) allNutsCodes.add(z.nutsCode);
+    // Discriminated union narrows region.value to ZoneData here — no cast needed
+    if (region.value.zoneId) region.value.zoneId.forEach(id => allZoneIds.add(id));
+    if (region.value.nutsCode) allNutsCodes.add(region.value.nutsCode);
   }
  
   return expected.every(zone => {
@@ -515,7 +521,7 @@ Add a new entry:
  
 | File | Action |
 |------|--------|
-| `src/types.ts` | Add `OpenTicketData`, `ZoneData`, `LineData`, `ViaStationData`, `ValidRegionChoice` interfaces; extend `ControlOptions` |
+| `src/types.ts` | Add `OpenTicketData`, `ZoneData`, `LineData`, `ViaStationData` interfaces and `ValidRegionChoice` discriminated union type; extend `ControlOptions` |
 | `src/control.ts` | Add `getOpenTickets()`, `carriersMatch()`, `zonesMatch()`, `checkZonesAndCarriers()` functions; wire into `controlTicket()` as check #14 |
 | `src/index.ts` | Add new types to the export block |
 | `tests/control.test.ts` | Add ~13 new test cases for zone/carrier validation; update `makeTicket` helper; update "all checks" test |
