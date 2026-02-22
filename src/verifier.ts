@@ -10,7 +10,7 @@
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 
 import { extractSignedData } from './signed-data';
-import { getSigningAlgorithm, getKeyAlgorithm, curveComponentLength } from './oids';
+import { getSigningAlgorithm, getKeyAlgorithm } from './oids';
 import { derToRaw, extractEcPublicKeyPoint } from './signature-utils';
 import type {
   SignatureVerificationResult,

@@ -7,7 +7,7 @@
  */
 import { decodeTicket } from './decoder';
 import { verifyLevel1Signature, verifyLevel2Signature } from './verifier';
-import { getIssuingTime, getEndOfValidityTime, getDynamicContentTime } from './time-helpers';
+import { getEndOfValidityTime, getDynamicContentTime } from './time-helpers';
 import type {
   UicBarcodeTicket,
   UicRailTicketData,
