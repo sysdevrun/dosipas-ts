@@ -47,8 +47,8 @@
     "asn1-per-ts": "^1.4.0"
   },
   "devDependencies": {
-    "@types/node": "^25.2.3",
+    "@types/node": "^25.3.0",
     "typescript": "^5.4.5",
-    "vitest": "^3.0.0"
+    "vitest": "^4.0.18"
   }
 }

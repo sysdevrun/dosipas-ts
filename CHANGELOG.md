@@ -6,6 +6,10 @@
 
 - **CLI `decode-ticket.ts`**: Fixed crash caused by references to removed types (`SecurityInfo`, `RailTicketData`) and nonexistent properties (`ticket.security`, `ticket.railTickets`, etc.). The CLI now uses the actual `UicBarcodeTicket` type hierarchy (`level2SignedData.level1Data`, `dataSequence[].decoded`, etc.). Also added computed timestamp display (issuing time, end of validity, dynamic content time).
 
+### Maintenance
+
+- **Updated dev dependencies**: `vitest` 3.x → 4.x, `@types/node` 25.2.x → 25.3.x.
+
 ## [1.5.0]
 
 ### Bug Fixes
