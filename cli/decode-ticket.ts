@@ -12,7 +12,7 @@
  *
  * Level 1 verification uses tests/fixtures/uic-publickeys.xml by default.
  *
- * Built-in fixtures: sample, sncf, solea, cts, grand_est
+ * Built-in fixtures: sample, sncf, solea, cts, grand_est, ardeche, ain, drome
  */
 
 import * as fs from 'fs';
@@ -24,6 +24,9 @@ import {
   verifyLevel1Signature,
   extractSignedData,
   findKeyInXml,
+  getIssuingTime,
+  getEndOfValidityTime,
+  getDynamicContentTime,
   SAMPLE_TICKET_HEX,
   SNCF_TER_TICKET_HEX,
   SOLEA_TICKET_HEX,
@@ -34,7 +37,13 @@ import {
   DROME_BUS_TICKET_HEX,
 } from '../src/index';
 import { getSigningAlgorithm, getKeyAlgorithm } from '../src/oids';
-import type { UicBarcodeTicket, SecurityInfo, RailTicketData } from '../src/types';
+import type {
+  UicBarcodeTicket,
+  Level1Data,
+  UicRailTicketData,
+  IntercodeDynamicData,
+  UicDynamicContentData,
+} from '../src/types';
 
 // ---------------------------------------------------------------------------
 // Named fixtures
@@ -117,26 +126,27 @@ function algName(oid: string | undefined, type: 'signing' | 'key'): string {
 // Display functions
 // ---------------------------------------------------------------------------
 
-function printSecurity(sec: SecurityInfo) {
+function printSecurity(l1: Level1Data) {
   heading('Security');
-  field('Security provider', sec.securityProviderNum);
-  if (sec.securityProviderIA5) field('Security provider (IA5)', sec.securityProviderIA5);
-  field('Key ID', sec.keyId);
-  if (sec.level1KeyAlg) field('Level 1 key algorithm', sec.level1KeyAlg + algName(sec.level1KeyAlg, 'key'));
-  if (sec.level2KeyAlg) field('Level 2 key algorithm', sec.level2KeyAlg + algName(sec.level2KeyAlg, 'key'));
-  if (sec.level1SigningAlg) field('Level 1 signing algorithm', sec.level1SigningAlg + algName(sec.level1SigningAlg, 'signing'));
-  if (sec.level2SigningAlg) field('Level 2 signing algorithm', sec.level2SigningAlg + algName(sec.level2SigningAlg, 'signing'));
-  bytesField('Level 2 public key', sec.level2PublicKey);
-  bytesField('Level 1 signature', sec.level1Signature);
-  if (sec.endOfValidityYear != null) {
-    field('End of validity', formatDate(sec.endOfValidityYear, sec.endOfValidityDay ?? 1));
+  field('Security provider', l1.securityProviderNum);
+  if (l1.securityProviderIA5) field('Security provider (IA5)', l1.securityProviderIA5);
+  field('Key ID', l1.keyId);
+  if (l1.level1KeyAlg) field('Level 1 key algorithm', l1.level1KeyAlg + algName(l1.level1KeyAlg, 'key'));
+  if (l1.level2KeyAlg) field('Level 2 key algorithm', l1.level2KeyAlg + algName(l1.level2KeyAlg, 'key'));
+  if (l1.level1SigningAlg) field('Level 1 signing algorithm', l1.level1SigningAlg + algName(l1.level1SigningAlg, 'signing'));
+  if (l1.level2SigningAlg) field('Level 2 signing algorithm', l1.level2SigningAlg + algName(l1.level2SigningAlg, 'signing'));
+  bytesField('Level 2 public key', l1.level2PublicKey);
+  bytesField('Level 1 signature', ticket?.level2SignedData.level1Signature);
+  if (l1.endOfValidityYear != null) {
+    field('End of validity', formatDate(l1.endOfValidityYear, l1.endOfValidityDay ?? 1));
   }
-  if (sec.endOfValidityTime != null) field('End of validity time', formatTime(sec.endOfValidityTime));
-  if (sec.validityDuration != null) field('Validity duration', `${sec.validityDuration} sec`);
+  if (l1.endOfValidityTime != null) field('End of validity time', formatTime(l1.endOfValidityTime));
+  if (l1.validityDuration != null) field('Validity duration', `${l1.validityDuration} sec`);
 }
 
-function printRailTicket(rt: RailTicketData) {
-  heading(`Rail Ticket (FCB${rt.fcbVersion})`);
+function printRailTicket(rt: UicRailTicketData, dataFormat: string) {
+  const fcbVersion = dataFormat.replace('FCB', '');
+  heading(`Rail Ticket (FCB${fcbVersion})`);
 
   if (rt.issuingDetail) {
     const iss = rt.issuingDetail;
@@ -212,8 +222,8 @@ function printRailTicket(rt: RailTicketData) {
     console.log(`  ${BOLD}Transport Documents (${rt.transportDocument.length})${RESET}`);
     for (let i = 0; i < rt.transportDocument.length; i++) {
       const doc = rt.transportDocument[i];
-      console.log(`    ${BOLD}Document ${i + 1}: ${doc.ticketType}${RESET}`);
-      printObject(doc.ticket, 6);
+      console.log(`    ${BOLD}Document ${i + 1}: ${doc.ticket.key}${RESET}`);
+      printObject(doc.ticket.value as Record<string, unknown>, 6);
     }
   }
 
@@ -269,34 +279,57 @@ function printObject(obj: Record<string, unknown>, indent: number) {
 }
 
 function printDynamicData(ticket: UicBarcodeTicket) {
-  if (!ticket.dynamicData && !ticket.level2DataBlock) return;
+  const l2 = ticket.level2SignedData.level2Data;
+  if (!l2) return;
 
   heading('Level 2 Data Block');
-  if (ticket.level2DataBlock) {
-    field('Data format', ticket.level2DataBlock.dataFormat);
-    bytesField('Raw data', ticket.level2DataBlock.data);
+  field('Data format', l2.dataFormat);
+  bytesField('Raw data', l2.data);
 
-    const match = ticket.level2DataBlock.dataFormat.match(/^_(\d+)\.ID1$/);
-    if (match) {
-      field('Type', `Intercode 6 Dynamic Data (_<RICS>.ID1, RICS=${match[1]})`);
+  const match = l2.dataFormat.match(/^_(\d+)\.ID1$/);
+  if (match) {
+    field('Type', `Intercode 6 Dynamic Data (_<RICS>.ID1, RICS=${match[1]})`);
+  }
+
+  if (l2.decoded) {
+    if (/^_\d+\.ID1$/.test(l2.dataFormat)) {
+      const dd = l2.decoded as IntercodeDynamicData;
+      console.log(`  ${BOLD}Intercode 6 Dynamic Data (decoded)${RESET}`);
+      field('Dynamic content day', dd.dynamicContentDay, 4);
+      if (dd.dynamicContentTime != null)
+        field('Dynamic content time', dd.dynamicContentTime, 4);
+      if (dd.dynamicContentUTCOffset != null)
+        field('UTC offset', dd.dynamicContentUTCOffset, 4);
+      if (dd.dynamicContentDuration != null)
+        field('Duration', `${dd.dynamicContentDuration} min`, 4);
+    } else if (l2.dataFormat === 'FDC1') {
+      const fdc = l2.decoded as UicDynamicContentData;
+      console.log(`  ${BOLD}UIC Dynamic Content (decoded)${RESET}`);
+      if (fdc.dynamicContentMobileAppId) field('Mobile app ID', fdc.dynamicContentMobileAppId, 4);
+      if (fdc.dynamicContentTimeStamp) {
+        field('Timestamp day', fdc.dynamicContentTimeStamp.day, 4);
+        field('Timestamp time', fdc.dynamicContentTimeStamp.time, 4);
+      }
     }
   }
+}
 
-  if (ticket.dynamicData) {
-    console.log(`  ${BOLD}Intercode 6 Dynamic Data (decoded)${RESET}`);
-    field('Dynamic content day', ticket.dynamicData.dynamicContentDay, 4);
-    if (ticket.dynamicData.dynamicContentTime != null)
-      field('Dynamic content time', ticket.dynamicData.dynamicContentTime, 4);
-    if (ticket.dynamicData.dynamicContentUTCOffset != null)
-      field('UTC offset', ticket.dynamicData.dynamicContentUTCOffset, 4);
-    if (ticket.dynamicData.dynamicContentDuration != null)
-      field('Duration', `${ticket.dynamicData.dynamicContentDuration} min`, 4);
-  }
+function printTimestamps(ticket: UicBarcodeTicket) {
+  heading('Timestamps');
+  const issuing = getIssuingTime(ticket);
+  const endOfValidity = getEndOfValidityTime(ticket);
+  const dynamicContent = getDynamicContentTime(ticket);
+
+  if (issuing) field('Issuing time (UTC)', issuing.toISOString());
+  if (endOfValidity) field('End of validity (UTC)', endOfValidity.toISOString());
+  if (dynamicContent) field('Dynamic content time (UTC)', dynamicContent.toISOString());
 }
 
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+let ticket: UicBarcodeTicket | undefined;
 
 async function main() {
   const args = process.argv.slice(2);
@@ -305,7 +338,7 @@ async function main() {
     console.log(`Usage: npx tsx cli/decode-ticket.ts <input> [--keys path/to/keys.xml]`);
     console.log();
     console.log('Input can be:');
-    console.log('  A fixture name: sample, sncf, solea, cts, grand_est');
+    console.log('  A fixture name: sample, sncf, solea, cts, grand_est, ardeche, ain, drome');
     console.log('  A path to a .hex file');
     console.log('  Inline hex data');
     console.log();
@@ -357,13 +390,12 @@ async function main() {
     console.log(`Using inline hex (${input.length} chars)`);
   } else {
     console.error(`Unknown input: ${input}`);
-    console.error('Use a fixture name (sample, sncf, solea, cts, grand_est), a .hex file, or inline hex.');
+    console.error('Use a fixture name (sample, sncf, solea, cts, grand_est, ardeche, ain, drome), a .hex file, or inline hex.');
     process.exit(1);
   }
 
   // Decode
   heading('Decoding ticket...');
-  let ticket: UicBarcodeTicket;
   try {
     ticket = decodeTicket(hex);
     ok('Ticket decoded successfully');
@@ -372,31 +404,31 @@ async function main() {
     process.exit(1);
   }
 
+  const l1 = ticket.level2SignedData.level1Data;
+
   // Header
   heading('Header');
   field('Format', ticket.format);
-  field('Header version', ticket.headerVersion);
   bytesField('Level 2 signature', ticket.level2Signature);
 
   // Security
-  printSecurity(ticket.security);
+  printSecurity(l1);
 
   // Rail tickets
-  for (const rt of ticket.railTickets) {
-    printRailTicket(rt);
-  }
-
-  // Other data blocks
-  if (ticket.otherDataBlocks.length > 0) {
-    heading('Other Data Blocks');
-    for (const block of ticket.otherDataBlocks) {
-      field('Data format', block.dataFormat);
-      bytesField('Data', block.data);
+  for (const entry of l1.dataSequence) {
+    if (entry.decoded) {
+      printRailTicket(entry.decoded, entry.dataFormat);
+    } else {
+      heading(`Data Block (${entry.dataFormat})`);
+      bytesField('Data', entry.data);
     }
   }
 
   // Level 2 data / dynamic data
   printDynamicData(ticket);
+
+  // Computed timestamps
+  printTimestamps(ticket);
 
   // Signature verification
   heading('Signature Verification');
