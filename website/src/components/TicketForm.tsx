@@ -512,13 +512,13 @@ export default function TicketForm({
           onChange={(v) => updateL1({ endOfValidityTime: v })}
           placeholder="0-1439 (minutes)"
         />
+        {renderAfterValidityFields}
         <OptionalNumberField
           label="validityDuration"
           value={l1.validityDuration}
           onChange={(v) => updateL1({ validityDuration: v })}
           placeholder="1-3600 (seconds)"
         />
-        {renderAfterValidityFields}
       </Section>
 
       {/* issuingDetail */}

@@ -57,13 +57,8 @@ function computeEndOfValidity(ticket: UicBarcodeTicket): Date | undefined {
   const l1 = getL1(ticket);
   if (l1.endOfValidityYear != null && l1.endOfValidityDay != null) {
     return new Date(
-      Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0)
-      + (l1.validityDuration ?? 0) * 1000,
+      Date.UTC(l1.endOfValidityYear, 0, l1.endOfValidityDay, 0, l1.endOfValidityTime ?? 0),
     );
-  }
-  if (l1.validityDuration != null) {
-    const issuing = computeIssuingTime(ticket);
-    if (issuing) return new Date(issuing.getTime() + l1.validityDuration * 1000);
   }
   return undefined;
 }
