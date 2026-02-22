@@ -8,11 +8,9 @@ import {
   SchemaCodec,
   SchemaBuilder,
   BitBuffer,
-  stripMetadata,
   type SchemaNode,
   type DecodedNode,
 } from 'asn1-per-ts';
-import type { Codec } from 'asn1-per-ts';
 import { HEADER_SCHEMAS } from './schemas';
 
 // ---------------------------------------------------------------------------

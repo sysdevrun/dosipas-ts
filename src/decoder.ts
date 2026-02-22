@@ -27,7 +27,6 @@ import type {
   Level1Data,
   DataSequenceEntry,
   Level2Data,
-  ExtensionData,
 } from './types';
 
 // ---------------------------------------------------------------------------

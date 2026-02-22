@@ -1,6 +1,5 @@
 import {
   verifyLevel2Signature,
-  verifyLevel1Signature,
   verifySignatures,
   extractSignedData,
   decodeTicket,
