@@ -3,6 +3,7 @@ import {
   getIssuingTime,
   getEndOfValidityTime,
   getDynamicContentTime,
+  getOpenTicketValidityWindow,
   signAndEncodeTicket,
   generateKeyPair,
   SAMPLE_TICKET_HEX,
@@ -10,7 +11,7 @@ import {
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
 } from '../src';
-import type { UicBarcodeTicket } from '../src';
+import type { UicBarcodeTicket, OpenTicketData, IssuingDetail } from '../src';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -271,5 +272,129 @@ describe('getDynamicContentTime', () => {
     //           = Feb 20 00:00 + 36000000 + (-3600000) ms
     //           = Feb 20 00:00 + 32400000 ms = Feb 20 09:00:00 UTC
     expect(time!.toISOString()).toBe('2025-02-20T09:00:00.000Z');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getOpenTicketValidityWindow
+// ---------------------------------------------------------------------------
+
+describe('getOpenTicketValidityWindow', () => {
+  const baseIssuing: IssuingDetail = {
+    issuingYear: 2025,
+    issuingDay: 15, // Jan 15
+    specimen: false,
+    securePaperTicket: false,
+    activated: true,
+  };
+
+  it('computes same-day ticket with explicit times', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: 0,
+      validFromTime: 600,   // 10:00
+      validUntilDay: 0,
+      validUntilTime: 720,  // 12:00
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // issuingDate = 2025-01-15 → validFrom = Jan 15 10:00 UTC, validUntil = Jan 15 12:00 UTC
+    expect(w!.validFrom.toISOString()).toBe('2025-01-15T10:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-15T12:00:00.000Z');
+  });
+
+  it('computes multi-day ticket with default times (absent → 00:00 / 23:59)', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: 1,
+      validUntilDay: 2,
+      // validFromTime absent → 0, validUntilTime absent → 1439
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // validFromDate = Jan 15 + 1 day = Jan 16 00:00 UTC
+    // validUntilDate = Jan 16 + 2 days = Jan 18, + 1439 min = Jan 18 23:59 UTC
+    expect(w!.validFrom.toISOString()).toBe('2025-01-16T00:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-18T23:59:00.000Z');
+  });
+
+  it('applies validFromUTCOffset correctly', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: 0,
+      validFromTime: 600,   // 10:00 local
+      validFromUTCOffset: 4, // +1h (4 quarter-hours)
+      validUntilDay: 0,
+      validUntilTime: 720,  // 12:00 local
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // validFrom = 600min - 4*15min = 600 - 60 = 540min = 09:00 UTC
+    // validUntil = 720min - 4*15min = 720 - 60 = 660min = 11:00 UTC
+    expect(w!.validFrom.toISOString()).toBe('2025-01-15T09:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-15T11:00:00.000Z');
+  });
+
+  it('defaults all fields when absent', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      // All time fields absent → validFromDay=0, validFromTime=0, validUntilDay=0, validUntilTime=1439
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // Same day as issuing: Jan 15 00:00 → Jan 15 23:59
+    expect(w!.validFrom.toISOString()).toBe('2025-01-15T00:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-15T23:59:00.000Z');
+  });
+
+  it('validUntilUTCOffset falls back to validFromUTCOffset', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: 0,
+      validFromTime: 600,
+      validFromUTCOffset: 4, // +1h
+      validUntilDay: 0,
+      validUntilTime: 720,
+      // validUntilUTCOffset absent → falls back to validFromUTCOffset (4)
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // Both use offset 4 → -60min
+    expect(w!.validFrom.toISOString()).toBe('2025-01-15T09:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-15T11:00:00.000Z');
+  });
+
+  it('handles negative validFromDay (day before issuing)', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: -1,
+      validFromTime: 0,
+      validUntilDay: 0,
+      validUntilTime: 1439,
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // validFromDate = Jan 15 - 1 day = Jan 14
+    // validUntilDate = Jan 14 + 0 = Jan 14 23:59
+    expect(w!.validFrom.toISOString()).toBe('2025-01-14T00:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-14T23:59:00.000Z');
+  });
+
+  it('uses distinct validUntilUTCOffset when provided', () => {
+    const ot: OpenTicketData = {
+      returnIncluded: false,
+      validFromDay: 0,
+      validFromTime: 600,
+      validFromUTCOffset: 4,   // +1h
+      validUntilDay: 0,
+      validUntilTime: 720,
+      validUntilUTCOffset: 8,  // +2h
+    };
+    const w = getOpenTicketValidityWindow(ot, baseIssuing);
+    expect(w).toBeDefined();
+    // validFrom = 600 - 60 = 540min = 09:00 UTC
+    // validUntil = 720 - 120 = 600min = 10:00 UTC
+    expect(w!.validFrom.toISOString()).toBe('2025-01-15T09:00:00.000Z');
+    expect(w!.validUntil.toISOString()).toBe('2025-01-15T10:00:00.000Z');
   });
 });
