@@ -5,16 +5,15 @@ export function renderAztec(
   data: Uint8Array,
   scale: number = 3,
 ): void {
-  // bwip-js expects hex string for binary data
-  const hex = Array.from(data)
-    .map((b) => b.toString(16).padStart(2, '0'))
+  // Convert binary data to ^NNN caret notation for bwip-js
+  const text = Array.from(data)
+    .map((b) => `^${b.toString().padStart(3, '0')}`)
     .join('');
 
-  // The 'encoding' option is supported at runtime but not in the type defs
   bwipjs.toCanvas(canvas, {
     bcid: 'azteccode',
-    text: hex,
-    encoding: 'hexadecimal',
+    text,
+    parse: true,
     scale,
     eclevel: 23,
   } as bwipjs.RenderOptions);
