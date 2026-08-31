@@ -4,13 +4,13 @@
  */
 import type { SchemaNode } from 'asn1-per-ts';
 
-import headerV1 from '../schemas/uic-barcode/uicBarcodeHeader_v1.schema.json';
-import headerV2 from '../schemas/uic-barcode/uicBarcodeHeader_v2.schema.json';
-import railTicketV1 from '../schemas/uic-barcode/uicRailTicketData_v1.schema.json';
-import railTicketV2 from '../schemas/uic-barcode/uicRailTicketData_v2.schema.json';
-import railTicketV3 from '../schemas/uic-barcode/uicRailTicketData_v3.schema.json';
-import intercode6 from '../schemas/uic-barcode/intercode6.schema.json';
-import dynamicContentV1 from '../schemas/uic-barcode/uicDynamicContentData_v1.schema.json';
+import headerV1 from '../schemas/uic-barcode/uicBarcodeHeader_v1.schema.json' with { type: 'json' };
+import headerV2 from '../schemas/uic-barcode/uicBarcodeHeader_v2.schema.json' with { type: 'json' };
+import railTicketV1 from '../schemas/uic-barcode/uicRailTicketData_v1.schema.json' with { type: 'json' };
+import railTicketV2 from '../schemas/uic-barcode/uicRailTicketData_v2.schema.json' with { type: 'json' };
+import railTicketV3 from '../schemas/uic-barcode/uicRailTicketData_v3.schema.json' with { type: 'json' };
+import intercode6 from '../schemas/uic-barcode/intercode6.schema.json' with { type: 'json' };
+import dynamicContentV1 from '../schemas/uic-barcode/uicDynamicContentData_v1.schema.json' with { type: 'json' };
 
 type SchemaMap = Record<string, SchemaNode>;
 

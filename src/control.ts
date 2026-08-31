@@ -5,9 +5,9 @@
  * and running a series of focused check functions — each responsible for
  * verifying one specific aspect of the ticket.
  */
-import { decodeTicket } from './decoder';
-import { verifyLevel1Signature, verifyLevel2Signature } from './verifier';
-import { getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers';
+import { decodeTicket } from './decoder.js';
+import { verifyLevel1Signature, verifyLevel2Signature } from './verifier.js';
+import { getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 import type {
   UicBarcodeTicket,
   UicRailTicketData,
@@ -17,7 +17,7 @@ import type {
   ControlResult,
   ControlOptions,
   OpenTicketData,
-} from './types';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Hex helpers

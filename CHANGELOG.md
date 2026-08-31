@@ -15,6 +15,14 @@
 
 ### Bug Fixes
 
+- **Published `dist/` is now importable by plain Node** (no bundler required).
+  The build previously used `moduleResolution: "bundler"`, which emitted
+  extensionless relative imports (`./decoder`) and JSON imports without import
+  attributes — both rejected by Node's ESM loader (`ERR_MODULE_NOT_FOUND`,
+  `ERR_IMPORT_ATTRIBUTE_MISSING`). The compiler now uses
+  `module`/`moduleResolution: "NodeNext"`, relative specifiers carry `.js`
+  extensions, and the schema imports use `with { type: 'json' }`. CI now packs
+  the artifact and imports it with plain Node so this cannot silently regress.
 - **CLI `decode-ticket.ts`**: Fixed crash caused by references to removed types (`SecurityInfo`, `RailTicketData`) and nonexistent properties (`ticket.security`, `ticket.railTickets`, etc.). The CLI now uses the actual `UicBarcodeTicket` type hierarchy (`level2SignedData.level1Data`, `dataSequence[].decoded`, etc.). Also added computed timestamp display (issuing time, end of validity, dynamic content time).
 
 ### Maintenance

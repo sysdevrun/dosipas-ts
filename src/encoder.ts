@@ -11,7 +11,7 @@ import {
   type SchemaNode,
 } from 'asn1-per-ts';
 import type { Codec, RawBytes } from 'asn1-per-ts';
-import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas';
+import { HEADER_SCHEMAS, RAIL_TICKET_SCHEMAS, INTERCODE_SCHEMAS, DYNAMIC_CONTENT_SCHEMAS } from './schemas.js';
 import type {
   UicBarcodeTicket,
   Level1Data,
@@ -19,7 +19,7 @@ import type {
   UicRailTicketData,
   UicDynamicContentData,
   IntercodeDynamicData,
-} from './types';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Codec caches (separate from decoder to avoid coupling)

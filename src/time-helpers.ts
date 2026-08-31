@@ -11,7 +11,7 @@ import type {
   IntercodeDynamicData,
   OpenTicketData,
   IssuingDetail,
-} from './types';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Internal accessors

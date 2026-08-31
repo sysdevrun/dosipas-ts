@@ -9,14 +9,14 @@
  */
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 
-import { extractSignedData } from './signed-data';
-import { getSigningAlgorithm, getKeyAlgorithm } from './oids';
-import { derToRaw, extractEcPublicKeyPoint } from './signature-utils';
+import { extractSignedData } from './signed-data.js';
+import { getSigningAlgorithm, getKeyAlgorithm } from './oids.js';
+import { derToRaw, extractEcPublicKeyPoint } from './signature-utils.js';
 import type {
   SignatureVerificationResult,
   Level1KeyProvider,
   VerifyOptions,
-} from './types';
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Curve dispatch helpers

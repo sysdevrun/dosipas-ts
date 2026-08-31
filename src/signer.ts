@@ -12,11 +12,11 @@
  */
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 
-import { encodeLevel1Data, encodeLevel2Data, encodeLevel2SignedData, encodeUicBarcode, encodeTicketToBytes } from './encoder';
-import { extractSignedData } from './signed-data';
-import { rawToDer } from './signature-utils';
+import { encodeLevel1Data, encodeLevel2Data, encodeLevel2SignedData, encodeUicBarcode, encodeTicketToBytes } from './encoder.js';
+import { extractSignedData } from './signed-data.js';
+import { rawToDer } from './signature-utils.js';
 import type { RawBytes } from 'asn1-per-ts';
-import type { UicBarcodeTicket, Level1Data } from './types';
+import type { UicBarcodeTicket, Level1Data } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Types
