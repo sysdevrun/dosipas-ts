@@ -11,7 +11,7 @@ import {
   type SchemaNode,
   type DecodedNode,
 } from 'asn1-per-ts';
-import { HEADER_SCHEMAS } from './schemas';
+import { HEADER_SCHEMAS } from './schemas.js';
 
 // ---------------------------------------------------------------------------
 // Codec cache (separate from decoder/encoder to avoid coupling)

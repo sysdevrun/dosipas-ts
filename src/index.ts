@@ -1,12 +1,12 @@
-export { decodeTicket, decodeTicketFromBytes } from './decoder';
-export { encodeTicket, encodeTicketToBytes, encodeLevel2Data, encodeLevel1Data, encodeLevel2SignedData, encodeUicBarcode } from './encoder';
-export { verifySignatures, verifyLevel1Signature, verifyLevel2Signature, findKeyInXml, parseKeysXml } from './verifier';
-export { controlTicket } from './control';
-export { getIssuingTime, getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers';
-export { extractSignedData } from './signed-data';
-export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPair, getPublicKey, CURVES } from './signer';
-export { SAMPLE_TICKET_HEX, SNCF_TER_TICKET_HEX, SOLEA_TICKET_HEX, BUS_ARDECHE_TICKET_HEX, BUS_AIN_TICKET_HEX, DROME_BUS_TICKET_HEX, CTS_TICKET_HEX, GRAND_EST_U1_FCB3_HEX } from './fixtures';
-export { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from './signature-fixtures';
+export { decodeTicket, decodeTicketFromBytes } from './decoder.js';
+export { encodeTicket, encodeTicketToBytes, encodeLevel2Data, encodeLevel1Data, encodeLevel2SignedData, encodeUicBarcode } from './encoder.js';
+export { verifySignatures, verifyLevel1Signature, verifyLevel2Signature, findKeyInXml, parseKeysXml } from './verifier.js';
+export { controlTicket } from './control.js';
+export { getIssuingTime, getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
+export { extractSignedData } from './signed-data.js';
+export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPair, getPublicKey, CURVES } from './signer.js';
+export { SAMPLE_TICKET_HEX, SNCF_TER_TICKET_HEX, SOLEA_TICKET_HEX, BUS_ARDECHE_TICKET_HEX, BUS_AIN_TICKET_HEX, DROME_BUS_TICKET_HEX, CTS_TICKET_HEX, GRAND_EST_U1_FCB3_HEX } from './fixtures.js';
+export { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from './signature-fixtures.js';
 
 export type {
   UicBarcodeTicket,
@@ -46,10 +46,10 @@ export type {
   ZoneData,
   LineData,
   ViaStationData,
-} from './types';
+} from './types.js';
 
-export type { UicPublicKeyEntry } from './verifier';
-export type { ExtractedSignedData } from './signed-data';
-export type { CurveName, CurveConfig, SigningKeyPair } from './signer';
+export type { UicPublicKeyEntry } from './verifier.js';
+export type { ExtractedSignedData } from './signed-data.js';
+export type { CurveName, CurveConfig, SigningKeyPair } from './signer.js';
 
 export { RawBytes } from 'asn1-per-ts';

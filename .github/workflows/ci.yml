@@ -21,3 +21,12 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - name: ESM smoke test (import packed artifact with plain Node)
+        run: |
+          npm pack --pack-destination /tmp
+          mkdir -p /tmp/smoke && cd /tmp/smoke && npm init -y
+          npm install /tmp/dosipas-ts-*.tgz
+          node -e "import('dosipas-ts').then(m => {
+            if (typeof m.decodeTicket !== 'function') process.exit(1);
+            console.log('ESM smoke test ok');
+          })"
