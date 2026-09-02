@@ -283,6 +283,34 @@ describe('findKeyInXml / parseKeysXml', () => {
     expect(key).toBeNull();
   });
 
+  it('skips entries whose base64 is malformed instead of throwing', () => {
+    // The live UIC registry contains an entry whose base64 length is 1 mod 4
+    // (issuer 1182, key 2). atob rejects it; one bad row must not cost every key.
+    const withBadEntry = sampleXml.replace(
+      '</keys>',
+      '<key><issuerName>Broken</issuerName><issuerCode>1182</issuerCode>' +
+        '<signatureAlgorithm>SHA256withECDSA</signatureAlgorithm><id>2</id>' +
+        '<publicKey>MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAX</publicKey>' +
+        '<barcodeVersion>2</barcodeVersion></key></keys>',
+    );
+
+    const keys = parseKeysXml(withBadEntry);
+    expect(keys).toHaveLength(2);
+    expect(keys.map(k => k.issuerCode)).not.toContain(1182);
+  });
+
+  it('surfaces a malformed key as an error rather than a miss', () => {
+    const withBadEntry = sampleXml.replace(
+      '</keys>',
+      '<key><issuerName>Broken</issuerName><issuerCode>1182</issuerCode>' +
+        '<signatureAlgorithm>SHA256withECDSA</signatureAlgorithm><id>2</id>' +
+        '<publicKey>MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAX</publicKey>' +
+        '<barcodeVersion>2</barcodeVersion></key></keys>',
+    );
+
+    expect(() => findKeyInXml(withBadEntry, 1182, 2)).toThrow(/Malformed base64/);
+  });
+
   it('parses all keys', () => {
     const keys = parseKeysXml(sampleXml);
     expect(keys).toHaveLength(2);

@@ -310,7 +310,14 @@ export function findKeyInXml(xml: string, issuerCode: number, keyId: number): Ui
       if (xmlIssuerCode === issuerCode && xmlKeyId === keyId) {
         // Base64 decode
         const b64 = pubKeyMatch[1].replace(/\s+/g, '');
-        return base64ToBytes(b64);
+        try {
+          return base64ToBytes(b64);
+        } catch {
+          // A corrupt entry must not look like a missing one.
+          throw new Error(
+            `Malformed base64 public key for issuer ${issuerCode}, key ${keyId}`,
+          );
+        }
       }
     }
   }
@@ -343,11 +350,19 @@ export function parseKeysXml(xml: string): UicPublicKeyEntry[] {
     const endDate = extractXmlText(block, 'endDate');
 
     if (issuerCode != null && id != null && publicKeyB64) {
+      // The live registry contains at least one entry whose base64 is
+      // truncated (length 1 mod 4). Skip those rather than losing every key.
+      let publicKey: Uint8Array;
+      try {
+        publicKey = base64ToBytes(publicKeyB64.replace(/\s+/g, ''));
+      } catch {
+        continue;
+      }
       entries.push({
         issuerCode,
         id,
         issuerName: issuerName ?? '',
-        publicKey: base64ToBytes(publicKeyB64.replace(/\s+/g, '')),
+        publicKey,
         publicKeyB64: publicKeyB64.replace(/\s+/g, ''),
         signatureAlgorithm: signatureAlgorithm ?? '',
         versionType: versionType ?? '',
