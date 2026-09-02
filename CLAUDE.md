@@ -27,6 +27,12 @@ dosipas-ts is a TypeScript npm module for encoding, decoding, and verifying UIC 
 ## Changelog
 
 - Update `CHANGELOG.md` when making user-facing changes (new features, breaking changes, bug fixes)
+- Pending entries go at the top under `## Upcoming release` — never under a guessed
+  next version number, and do not bump `package.json` for them: the version a change
+  ships in is decided at release time
+- At release time, rename `## Upcoming release` to the version (e.g. `## [1.5.2]`),
+  bump `package.json` to match, and leave a fresh empty `## Upcoming release` header
+  above it
 
 ## Dependencies
 
