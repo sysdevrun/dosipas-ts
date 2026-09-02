@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.5.2]
+## Upcoming release
 
 ### Maintenance
 
