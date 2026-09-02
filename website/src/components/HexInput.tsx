@@ -8,6 +8,7 @@ import {
   DROME_BUS_TICKET_HEX,
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
+  CAR_JAUNE_TICKET_HEX,
 } from 'dosipas-ts';
 import { scanFromImageFile } from '../lib/scanner';
 import { bytesToHex } from '../lib/signing';
@@ -21,6 +22,7 @@ const PREFILLS = [
   { label: 'Cars Drôme', hex: DROME_BUS_TICKET_HEX },
   { label: 'CTS', hex: CTS_TICKET_HEX },
   { label: 'Grand Est', hex: GRAND_EST_U1_FCB3_HEX },
+  { label: 'Car Jaune', hex: CAR_JAUNE_TICKET_HEX },
 ];
 
 interface Props {
