@@ -23,7 +23,13 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
   const [trustFipsKey, setTrustFipsKey] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(true);
-  const { ticket, signatures, signedData, error, loading } = useTicketDecode(hex, trustFipsKey, trustSysdevrunKey);
+  const [trustCarJauneKey, setTrustCarJauneKey] = useState(true);
+  const { ticket, signatures, signedData, error, loading } = useTicketDecode(
+    hex,
+    trustFipsKey,
+    trustSysdevrunKey,
+    trustCarJauneKey,
+  );
 
   useEffect(() => {
     if (initialHex && initialHex !== hex) {
@@ -94,6 +100,17 @@ export default function DecodeTab({ initialHex, onHexChange, onEditInEncoder, on
               sysdevrun-dosipas
             </a>{' '}
             keys for RICS 9950
+          </label>
+
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustCarJauneKey}
+              onChange={(e) => setTrustCarJauneKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust Car Jaune (La Réunion) key for issuer IWN8, key id 1 — supplies
+            ECDSA P-256 / SHA-256, which its barcodes omit
           </label>
         </div>
       </details>

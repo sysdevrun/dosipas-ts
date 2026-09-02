@@ -13,6 +13,7 @@ export function useTicketControl(
   hex: string,
   trustFipsKey = false,
   trustSysdevrunKey = false,
+  trustCarJauneKey = false,
   expectedNetworkIds: string[] = [],
 ): ControlHookResult {
   const [result, setResult] = useState<ControlResult | null>(null);
@@ -38,7 +39,11 @@ export function useTicketControl(
 
     debounceRef.current = setTimeout(async () => {
       try {
-        const keyProvider = await createKeyProvider(trustFipsKey, trustSysdevrunKey);
+        const keyProvider = await createKeyProvider(
+          trustFipsKey,
+          trustSysdevrunKey,
+          trustCarJauneKey,
+        );
         const ids = networkIdsKey ? networkIdsKey.split(',') : [];
         const controlResult = await controlTicket(clean, {
           level1KeyProvider: keyProvider,
@@ -55,7 +60,7 @@ export function useTicketControl(
     }, 200);
 
     return () => clearTimeout(debounceRef.current);
-  }, [hex, trustFipsKey, trustSysdevrunKey, networkIdsKey]);
+  }, [hex, trustFipsKey, trustSysdevrunKey, trustCarJauneKey, networkIdsKey]);
 
   return { result, error, loading };
 }

@@ -15,7 +15,12 @@ export interface DecodeResult {
   loading: boolean;
 }
 
-export function useTicketDecode(hex: string, trustFipsKey = false, trustSysdevrunKey = false): DecodeResult {
+export function useTicketDecode(
+  hex: string,
+  trustFipsKey = false,
+  trustSysdevrunKey = false,
+  trustCarJauneKey = false,
+): DecodeResult {
   const [ticket, setTicket] = useState<UicBarcodeTicket | null>(null);
   const [signatures, setSignatures] = useState<SignatureVerificationResult | null>(null);
   const [signedData, setSignedData] = useState<ExtractedSignedData | null>(null);
@@ -60,7 +65,11 @@ export function useTicketDecode(hex: string, trustFipsKey = false, trustSysdevru
           const bytes = new Uint8Array(
             clean.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
           );
-          const keyProvider = await createKeyProvider(trustFipsKey, trustSysdevrunKey);
+          const keyProvider = await createKeyProvider(
+            trustFipsKey,
+            trustSysdevrunKey,
+            trustCarJauneKey,
+          );
           const result = await verifySignatures(bytes, {
             level1KeyProvider: keyProvider,
           });
@@ -79,7 +88,7 @@ export function useTicketDecode(hex: string, trustFipsKey = false, trustSysdevru
     }, 200);
 
     return () => clearTimeout(debounceRef.current);
-  }, [hex, trustFipsKey, trustSysdevrunKey]);
+  }, [hex, trustFipsKey, trustSysdevrunKey, trustCarJauneKey]);
 
   return { ticket, signatures, signedData, error, loading };
 }

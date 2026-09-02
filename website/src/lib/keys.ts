@@ -1,5 +1,10 @@
-import { parseKeysXml, findKeyInXml, getPublicKey as derivePublicKey } from 'dosipas-ts';
-import type { Level1KeyProvider, UicPublicKeyEntry } from 'dosipas-ts';
+import {
+  parseKeysXml,
+  findKeyInXml,
+  getPublicKey as derivePublicKey,
+  CAR_JAUNE_SIGNATURES,
+} from 'dosipas-ts';
+import type { Level1KeyProvider, Level1KeyMaterial, UicPublicKeyEntry } from 'dosipas-ts';
 
 let cachedXml: string | null = null;
 let cachedKeys: UicPublicKeyEntry[] | null = null;
@@ -31,6 +36,29 @@ function getSysdevrunPublicKey(): Uint8Array {
   return cachedSysdevrunPubKey;
 }
 
+let cachedCarJauneKey: Level1KeyMaterial | null = null;
+
+/**
+ * Car Jaune (La Réunion) level 1 key material.
+ *
+ * This issuer identifies itself with the IA5 string "IWN8" rather than a
+ * numeric RICS code, so it is absent from the UIC registry. Its barcodes also
+ * omit `level1KeyAlg` / `level1SigningAlg`, so the algorithms have to be
+ * supplied alongside the key or verification cannot proceed.
+ */
+function getCarJauneKey(): Level1KeyMaterial {
+  if (!cachedCarJauneKey) {
+    cachedCarJauneKey = {
+      publicKey: new Uint8Array(
+        CAR_JAUNE_SIGNATURES.level1PublicKeyHex.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
+      ),
+      keyAlg: CAR_JAUNE_SIGNATURES.level1KeyAlg,
+      signingAlg: CAR_JAUNE_SIGNATURES.level1SigningAlg,
+    };
+  }
+  return cachedCarJauneKey;
+}
+
 export async function loadKeysXml(): Promise<string> {
   if (cachedXml) return cachedXml;
   const resp = await fetch('./uic-publickeys.xml');
@@ -49,20 +77,31 @@ export async function getKeys(): Promise<UicPublicKeyEntry[]> {
 export async function createKeyProvider(
   trustFipsKey = false,
   trustSysdevrunKey = false,
+  trustCarJauneKey = false,
 ): Promise<Level1KeyProvider> {
   const xml = await loadKeysXml();
   return {
     async getPublicKey(securityProvider, keyId) {
+      // Issuers identified by an IA5 string are not in the UIC registry,
+      // which is keyed by numeric RICS codes.
+      if (trustCarJauneKey && securityProvider.ia5 === 'IWN8' && keyId === 1) {
+        return getCarJauneKey();
+      }
+
       const issuerCode = securityProvider.num ?? 0;
+      // No algorithms supplied for these two: their barcodes carry their own
+      // OIDs, and a configured value that disagreed would be a hard error.
       if (trustFipsKey && issuerCode === 9999 && keyId === 0) {
-        return getFipsL1PublicKey();
+        return { publicKey: getFipsL1PublicKey() };
       }
       if (trustSysdevrunKey && issuerCode === 9950 && keyId === 1) {
-        return getSysdevrunPublicKey();
+        return { publicKey: getSysdevrunPublicKey() };
       }
+
       const key = findKeyInXml(xml, issuerCode, keyId);
       if (!key) {
-        throw new Error(`Key not found: issuer=${issuerCode}, keyId=${keyId}`);
+        const issuer = securityProvider.ia5 ?? issuerCode;
+        throw new Error(`Key not found: issuer=${issuer}, keyId=${keyId}`);
       }
       return key;
     },

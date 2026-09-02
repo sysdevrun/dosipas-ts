@@ -370,8 +370,15 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trustFipsKey, setTrustFipsKey] = useState(true);
   const [trustSysdevrunKey, setTrustSysdevrunKey] = useState(true);
+  const [trustCarJauneKey, setTrustCarJauneKey] = useState(true);
   const [networkIds, setNetworkIds] = useState(loadNetworkIds);
-  const { result, error, loading } = useTicketControl(hex, trustFipsKey, trustSysdevrunKey, networkIds);
+  const { result, error, loading } = useTicketControl(
+    hex,
+    trustFipsKey,
+    trustSysdevrunKey,
+    trustCarJauneKey,
+    networkIds,
+  );
 
   const handleEditInEncoder = () => {
     if (!result?.ticket) return;
@@ -442,6 +449,17 @@ export default function ControlTab({ initialHex, onHexChange, onDecode, onEditIn
               sysdevrun-dosipas
             </a>{' '}
             keys for RICS 9950
+          </label>
+
+          <label className="flex items-center gap-2 text-xs text-gray-600">
+            <input
+              type="checkbox"
+              checked={trustCarJauneKey}
+              onChange={(e) => setTrustCarJauneKey(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            Trust Car Jaune (La Réunion) key for issuer IWN8, key id 1 — supplies
+            ECDSA P-256 / SHA-256, which its barcodes omit
           </label>
 
           <NetworkIdsEditor networkIds={networkIds} onChange={updateNetworkIds} />
