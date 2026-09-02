@@ -222,7 +222,7 @@ const result = await verifyLevel2Signature(barcodeBytes);
 import { verifySignatures } from 'dosipas-ts';
 
 const result = await verifySignatures(barcodeBytes, {
-  level1PublicKey: publicKeyBytes,
+  level1Key: { publicKey: publicKeyBytes },
 });
 // { level1: { valid: true, ... }, level2: { valid: true, ... } }
 ```
@@ -238,6 +238,9 @@ const xml = fs.readFileSync('uic-publickeys.xml', 'utf-8');
 
 const provider: Level1KeyProvider = {
   async getPublicKey(securityProvider, keyId) {
+    // Note: securityProvider.num is undefined for issuers that identify
+    // themselves with an IA5 string instead of a numeric RICS code — those
+    // are not in the UIC registry, so branch on securityProvider.ia5.
     const key = findKeyInXml(xml, securityProvider.num!, keyId);
     if (!key) throw new Error('Key not found');
     return key;
@@ -249,13 +252,59 @@ const result = await verifySignatures(barcodeBytes, {
 });
 ```
 
+`findKeyInXml` returns `{ publicKey }` only. The registry's `signatureAlgorithm`
+element is free-form vendor text (`'SHA1withDSA(1024,160)'`, `'DSA1024'`, ...)
+and never records a curve, so it is surfaced unparsed on `parseKeysXml` entries
+and never used for verification.
+
 ### Verify Level 1 directly
 
 ```ts
 import { verifyLevel1Signature } from 'dosipas-ts';
 
-const result = await verifyLevel1Signature(barcodeBytes, publicKeyBytes);
+const result = await verifyLevel1Signature(barcodeBytes, { publicKey: publicKeyBytes });
 ```
+
+### Barcodes that omit their algorithm OIDs
+
+Some issuers leave `level1KeyAlg` / `level1SigningAlg` out of the header and
+share the algorithm out of band. Supply the OIDs alongside the key:
+
+```ts
+import { verifyLevel1Signature, CAR_JAUNE_TICKET_HEX } from 'dosipas-ts';
+
+const result = await verifyLevel1Signature(barcodeBytes, {
+  publicKey,
+  keyAlg: '1.2.840.10045.3.1.7',     // P-256
+  signingAlg: '1.2.840.10045.4.3.2', // ECDSA with SHA-256
+});
+// { valid: true, algorithm: 'ECDSA P-256 with SHA-256', algorithmSource: 'configured' }
+```
+
+Level 2 works the same way — its public key is embedded in the barcode, but its
+OIDs can be absent too:
+
+```ts
+await verifySignatures(barcodeBytes, {
+  level1Key: { publicKey, keyAlg: '...', signingAlg: '...' },
+  level2Algorithms: { keyAlg: '...', signingAlg: '...' },
+});
+```
+
+These fields take **dotted-decimal OIDs only** — names such as `'P-256'` or
+`'SHA256withECDSA'` are rejected. The accepted values are the keys of
+`SIGNING_ALGORITHMS` and `KEY_ALGORITHMS`, both exported from the package.
+
+Precedence is strict, and nothing is ever inferred from the key material:
+
+1. the OID carried in the barcode, when present;
+2. otherwise the OID you supply here;
+3. otherwise verification fails with an explanatory error.
+
+If the barcode and your configuration **disagree**, verification fails with a
+mismatch error rather than silently preferring one. The barcode's OIDs sit
+inside the signed data, so a disagreement means either the trust store is
+misconfigured or the credential is not what you think it is.
 
 ## Ticket control
 
@@ -274,7 +323,12 @@ result.ticket  // decoded UicBarcodeTicket
 result.checks  // individual check results keyed by name
 ```
 
-Checks performed: decode, header format, security info, Level 1 signature, Level 2 signature, expiry, specimen flag, activated flag, issuing detail, transport document, Intercode extension (with optional network ID validation), dynamic data format, and dynamic content freshness.
+`ControlOptions` extends `VerifyOptions`, so `level1Key` and `level2Algorithms`
+are accepted here too. Signature checks also report `algorithm` and
+`algorithmSource` (`'barcode' | 'configured' | 'mixed'`), so you can see which
+algorithm verified a ticket and where it came from.
+
+Checks performed: decode, header format, security info, Level 1 signature, Level 2 signature, expiry, specimen flag, activated flag, issuing detail, transport document, Intercode extension (with optional network ID validation), dynamic data format, dynamic content freshness, zones & carriers, and open ticket validity.
 
 ## Time helpers
 
@@ -311,12 +365,18 @@ import { findKeyInXml, parseKeysXml } from 'dosipas-ts';
 
 // Find a specific key
 const key = findKeyInXml(xml, 1187, 1); // issuerCode, keyId
-// Returns Uint8Array or null
+// Returns { publicKey: Uint8Array } or null — no algorithm metadata,
+// see the note under "Using a key provider" above.
 
 // Parse all keys
 const keys = parseKeysXml(xml);
 // [{ issuerCode, id, issuerName, publicKey, signatureAlgorithm, ... }]
 ```
+
+Entries whose base64 public key is malformed are skipped by `parseKeysXml`
+rather than failing the whole parse; `findKeyInXml` throws for such an entry so
+a corrupt key is never mistaken for a missing one. Entries with a non-numeric
+`<id>` are not returned.
 
 ## Built-in fixtures
 
@@ -332,13 +392,14 @@ import {
   BUS_ARDECHE_TICKET_HEX,
   BUS_AIN_TICKET_HEX,
   DROME_BUS_TICKET_HEX,
+  CAR_JAUNE_TICKET_HEX,
 } from 'dosipas-ts';
 ```
 
 And signature fixture data:
 
 ```ts
-import { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from 'dosipas-ts';
+import { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES, CAR_JAUNE_SIGNATURES } from 'dosipas-ts';
 ```
 
 ## Supported algorithms
@@ -348,7 +409,13 @@ import { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from 'dosipas-t
 | ECDSA P-256 with SHA-256 | Yes | Yes |
 | ECDSA P-384 with SHA-384 | Yes | Yes |
 | ECDSA P-521 with SHA-512 | Yes | Yes |
-| DSA with SHA-224/256 | Detected | Not supported |
+| DSA with SHA-224/256 | No | Detected only |
+| RSA with SHA-256 | No | Detected only |
+
+The OIDs for these live in `SIGNING_ALGORITHMS` and `KEY_ALGORITHMS`
+(`src/oids.ts`), exported from the package. Those tables are the accepted
+values for the `keyAlg` / `signingAlg` fields described above; note that the
+DSA and RSA entries are recognised for reporting but never verify.
 
 ## License
 

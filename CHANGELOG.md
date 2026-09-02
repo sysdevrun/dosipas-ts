@@ -2,6 +2,92 @@
 
 ## Upcoming release
 
+### Breaking Changes
+
+- **Level 1 verification now takes key *material*, not bare key bytes.** The
+  signing and key algorithms can be supplied alongside the public key, for
+  issuers that omit `level1SigningAlg` / `level1KeyAlg` from the barcode and
+  share the algorithm out of band. Those barcodes were previously unverifiable
+  even with the correct public key.
+  - `verifyLevel1Signature(bytes, publicKey)` → `verifyLevel1Signature(bytes, key)`
+    where `key` is `{ publicKey, keyAlg?, signingAlg? }`.
+  - `VerifyOptions.level1PublicKey` → `VerifyOptions.level1Key`, same shape.
+  - `Level1KeyProvider.getPublicKey` now resolves to `Level1KeyMaterial`
+    instead of `Uint8Array`.
+  - `findKeyInXml` now returns `Level1KeyMaterial | null` instead of
+    `Uint8Array | null`. It populates only `publicKey` — the registry's
+    `signatureAlgorithm` is free-form vendor text that never records a curve,
+    so it is deliberately not interpreted.
+  - `ControlOptions` now extends `VerifyOptions`, so `controlTicket` also
+    accepts `level1Key` and `level2Algorithms`.
+- **`controlTicket` no longer reports a missing `level1SigningAlg` as an
+  error.** A v2 header without the OID is now a note on the `securityInfo`
+  check; whether the algorithm can actually be resolved is decided by the
+  `level1Signature` check, which sees the caller's configuration and the key
+  provider. Tickets whose Level 1 signature verifies with configured
+  algorithms now pass control. The overall verdict is unchanged when no key
+  material is supplied — `level1Signature` still fails at error severity.
+
+### New Features
+
+- **Level 2 algorithms are configurable too**, via `VerifyOptions.level2Algorithms`
+  and a new optional second argument to `verifyLevel2Signature`. The Level 2
+  public key stays embedded in the barcode, but its OIDs can be absent.
+- **Algorithm precedence is strict**: OIDs in the barcode take priority, then
+  configured algorithms, then a clear error. Nothing is inferred from the key
+  material. If the barcode and the configuration disagree, verification fails
+  with an explicit mismatch error rather than silently picking a winner.
+  Fields accept dotted-decimal OIDs only — no names or aliases.
+- **`SIGNING_ALGORITHMS` and `KEY_ALGORITHMS` are now exported**, along with
+  `getSigningAlgorithm` / `getKeyAlgorithm`. Their keys are the accepted values
+  for `keyAlg` / `signingAlg`, so the reference is importable rather than
+  documentation-only.
+- **`SignatureLevelResult` and `CheckResult` gained `algorithm` and
+  `algorithmSource`** (`'barcode' | 'configured' | 'mixed'`), so callers can
+  see which algorithm verified a signature and where it came from.
+- **`cli/decode-ticket.ts` gained `--l1-key-alg` and `--l1-signing-alg`** for
+  verifying barcodes that omit their OIDs.
+- **New fixtures**: `CAR_JAUNE_TICKET_HEX` and `CAR_JAUNE_SIGNATURES` — a real
+  Car Jaune (La Réunion) ticket with no algorithm OIDs and no Level 2 block,
+  plus the Level 1 public key recovered from its signatures.
+
+### Bug Fixes
+
+- **`parseKeysXml` no longer throws on the live UIC key registry.** One entry
+  (issuer 1182, key 2) has a base64 payload whose length is `1 mod 4`, which
+  `atob` rejects — losing all 60 keys. Malformed entries are now skipped, and
+  `findKeyInXml` throws a descriptive error for such an entry so a corrupt key
+  is never mistaken for a missing one (`src/verifier.ts`).
+
+### Migration
+
+```diff
+-const result = await verifyLevel1Signature(bytes, publicKey);
++const result = await verifyLevel1Signature(bytes, { publicKey });
+
+-await verifySignatures(bytes, { level1PublicKey: publicKey });
++await verifySignatures(bytes, { level1Key: { publicKey } });
+
+ const provider: Level1KeyProvider = {
+   async getPublicKey(securityProvider, keyId) {
+     const key = findKeyInXml(xml, securityProvider.num!, keyId);
+     if (!key) throw new Error('Key not found');
+-    return key;
++    return key; // now already { publicKey }
+   },
+ };
+```
+
+For a barcode that omits its algorithm OIDs, supply them with the key:
+
+```diff
+ await verifyLevel1Signature(bytes, {
+   publicKey,
++  keyAlg: '1.2.840.10045.3.1.7',     // P-256
++  signingAlg: '1.2.840.10045.4.3.2', // ECDSA with SHA-256
+ });
+```
+
 ### Maintenance
 
 - **Signature verification accepts both high-S and low-S ECDSA signatures**
