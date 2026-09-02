@@ -113,7 +113,7 @@ describe('controlTicket — SAMPLE_TICKET_HEX', () => {
     const result = await controlTicket(SAMPLE_TICKET_HEX);
     expect(result.checks.level1Signature.passed).toBe(false);
     expect(result.checks.level1Signature.severity).toBe('error');
-    expect(result.checks.level1Signature.message).toContain('No level 1 key provider');
+    expect(result.checks.level1Signature.message).toContain('No level 1 key material');
   });
 
   it('level2Signature fails for sample ticket (synthetic signatures)', async () => {
@@ -173,7 +173,7 @@ describe('controlTicket — SNCF_TER_TICKET_HEX', () => {
     // so the verifier can't determine the signing algorithm
     const dummyProvider: Level1KeyProvider = {
       async getPublicKey() {
-        return new Uint8Array(65);
+        return { publicKey: new Uint8Array(65) };
       },
     };
     const result = await controlTicket(SNCF_TER_TICKET_HEX, {
@@ -678,3 +678,4 @@ describe('controlTicket — open ticket validity', () => {
     expect(result.checks.openTicketValidity.passed).toBe(true);
   });
 });
+

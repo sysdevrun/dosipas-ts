@@ -395,12 +395,15 @@ export interface ViaStationData {
 // Ticket control types
 // ---------------------------------------------------------------------------
 
-/** Options for ticket control / validation. */
-export interface ControlOptions {
+/**
+ * Options for ticket control / validation.
+ *
+ * Extends {@link VerifyOptions}, so `level1Key`, `level1KeyProvider` and
+ * `level2Algorithms` are all accepted here too.
+ */
+export interface ControlOptions extends VerifyOptions {
   /** Reference date/time for temporal checks. Defaults to `new Date()`. */
   now?: Date;
-  /** Level 1 key provider callback for signature verification. */
-  level1KeyProvider?: Level1KeyProvider;
   /**
    * Set of expected Intercode network IDs (hex strings, e.g. "250502").
    * When provided, intercodeIssuing must be present and its networkId must
@@ -426,6 +429,10 @@ export interface CheckResult {
   passed: boolean;
   severity: 'error' | 'warning' | 'info';
   message?: string;
+  /** Algorithm used, for signature checks. */
+  algorithm?: string;
+  /** Where that algorithm came from, for signature checks. */
+  algorithmSource?: AlgorithmSource;
 }
 
 /** Aggregated control result for a ticket. */
@@ -442,11 +449,17 @@ export interface ControlResult {
 // Signature verification types
 // ---------------------------------------------------------------------------
 
+/** Where a resolved algorithm came from. */
+export type AlgorithmSource = 'barcode' | 'configured' | 'mixed';
+
 /** Result of a signature verification attempt for a single level. */
 export interface SignatureLevelResult {
   valid: boolean;
   error?: string;
+  /** Human-readable algorithm actually used, e.g. 'ECDSA P-256 with SHA-256'. */
   algorithm?: string;
+  /** Whether that algorithm came from the barcode, the caller, or one of each. */
+  algorithmSource?: AlgorithmSource;
 }
 
 /** Result of signature verification for both levels. */
@@ -455,19 +468,82 @@ export interface SignatureVerificationResult {
   level2: SignatureLevelResult;
 }
 
-/** Options for signature verification. */
-export interface VerifyOptions {
-  /** Provider for Level 1 public keys (looked up by issuer + keyId). */
-  level1KeyProvider?: Level1KeyProvider;
-  /** Explicit Level 1 public key bytes (alternative to level1KeyProvider). */
-  level1PublicKey?: Uint8Array;
+/**
+ * A Level 1 public key plus the algorithms to verify it with.
+ *
+ * `keyAlg` and `signingAlg` are consulted only when the barcode omits the
+ * corresponding OID. Some issuers leave `level1KeyAlg` / `level1SigningAlg`
+ * out of the header and share the algorithm out of band; supplying them here
+ * makes those barcodes verifiable. Nothing is ever inferred from `publicKey`.
+ */
+export interface Level1KeyMaterial {
+  /** Public key bytes — raw EC point, SPKI DER, or X.509 certificate. */
+  publicKey: Uint8Array;
+
+  /**
+   * Key algorithm, as an ASN.1 object identifier in dotted-decimal form —
+   * e.g. `'1.2.840.10045.3.1.7'` for P-256. For ECDSA this is what identifies
+   * the curve.
+   *
+   * Used only when the barcode carries no `level1KeyAlg`. If the barcode does
+   * carry one and it differs from this value, verification fails with a
+   * mismatch error rather than silently preferring either.
+   *
+   * The accepted OIDs are the keys of `KEY_ALGORITHMS` in `src/oids.ts`,
+   * which is exported from this package.
+   */
+  keyAlg?: string;
+
+  /**
+   * Signing algorithm, as an ASN.1 object identifier in dotted-decimal form —
+   * e.g. `'1.2.840.10045.4.3.2'` for ECDSA with SHA-256.
+   *
+   * Used only when the barcode carries no `level1SigningAlg`. If the barcode
+   * does carry one and it differs from this value, verification fails with a
+   * mismatch error rather than silently preferring either.
+   *
+   * The accepted OIDs are the keys of `SIGNING_ALGORITHMS` in `src/oids.ts`,
+   * which is exported from this package.
+   */
+  signingAlg?: string;
 }
 
-/** Provider interface for looking up Level 1 public keys. */
+/**
+ * Algorithm overrides for Level 2 verification.
+ *
+ * The Level 2 public key is always embedded in the barcode, but its OIDs can
+ * be absent for the same reason as Level 1. Same precedence and same accepted
+ * values as the matching fields on {@link Level1KeyMaterial}.
+ */
+export interface Level2Algorithms {
+  /**
+   * Key algorithm OID, used only when the barcode carries no `level2KeyAlg`.
+   * Accepted values are the keys of `KEY_ALGORITHMS` in `src/oids.ts`.
+   */
+  keyAlg?: string;
+  /**
+   * Signing algorithm OID, used only when the barcode carries no
+   * `level2SigningAlg`. Accepted values are the keys of `SIGNING_ALGORITHMS`
+   * in `src/oids.ts`.
+   */
+  signingAlg?: string;
+}
+
+/** Options for signature verification. */
+export interface VerifyOptions {
+  /** Provider for Level 1 key material (looked up by issuer + keyId). */
+  level1KeyProvider?: Level1KeyProvider;
+  /** Explicit Level 1 key material (alternative to level1KeyProvider). */
+  level1Key?: Level1KeyMaterial;
+  /** Algorithm overrides for Level 2, when the barcode omits its OIDs. */
+  level2Algorithms?: Level2Algorithms;
+}
+
+/** Provider interface for looking up Level 1 key material. */
 export interface Level1KeyProvider {
   getPublicKey(
     securityProvider: { num?: number; ia5?: string },
     keyId: number,
     keyAlg?: string,
-  ): Promise<Uint8Array>;
+  ): Promise<Level1KeyMaterial>;
 }

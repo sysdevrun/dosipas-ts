@@ -343,11 +343,31 @@ async function main() {
     console.log('  Inline hex data');
     console.log();
     console.log('Options:');
-    console.log('  --keys <path>  UIC public key XML file for Level 1 verification');
-    console.log('                 (default: tests/fixtures/uic-publickeys.xml)');
-    console.log('  --no-keys      Skip Level 1 signature verification');
+    console.log('  --keys <path>          UIC public key XML file for Level 1 verification');
+    console.log('                         (default: tests/fixtures/uic-publickeys.xml)');
+    console.log('  --no-keys              Skip Level 1 signature verification');
+    console.log('  --l1-key-alg <oid>     Level 1 key algorithm OID, for barcodes that omit it');
+    console.log('                         (e.g. 1.2.840.10045.3.1.7 for P-256)');
+    console.log('  --l1-signing-alg <oid> Level 1 signing algorithm OID, for barcodes that omit it');
+    console.log('                         (e.g. 1.2.840.10045.4.3.2 for ECDSA with SHA-256)');
     process.exit(0);
   }
+
+  /** Pull `--flag <value>` out of args, returning the value if present. */
+  function takeOption(name: string): string | undefined {
+    const idx = args.indexOf(name);
+    if (idx === -1) return undefined;
+    const value = args[idx + 1];
+    if (!value) {
+      console.error(`Error: ${name} requires a value`);
+      process.exit(1);
+    }
+    args.splice(idx, 2);
+    return value;
+  }
+
+  const l1KeyAlg = takeOption('--l1-key-alg');
+  const l1SigningAlg = takeOption('--l1-signing-alg');
 
   // Parse --keys option (defaults to bundled UIC public keys)
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -453,12 +473,23 @@ async function main() {
     const keyId = security.keyId;
 
     if (issuerCode != null && keyId != null) {
-      const pubKey = findKeyInXml(keysXml, issuerCode, keyId);
-      if (pubKey) {
-        ok(`Found Level 1 key for issuer ${issuerCode}, key ID ${keyId} [${pubKey.length} bytes]`);
-        const l1Result = await verifyLevel1Signature(bytes, pubKey);
+      const registryKey = findKeyInXml(keysXml, issuerCode, keyId);
+      if (registryKey) {
+        ok(
+          `Found Level 1 key for issuer ${issuerCode}, key ID ${keyId} ` +
+            `[${registryKey.publicKey.length} bytes]`,
+        );
+        // The registry carries no usable algorithm metadata, so OIDs the
+        // barcode omits have to come from the command line.
+        const l1Result = await verifyLevel1Signature(bytes, {
+          ...registryKey,
+          keyAlg: l1KeyAlg,
+          signingAlg: l1SigningAlg,
+        });
         if (l1Result.valid) {
           ok(`Level 1: ${GREEN}VALID${RESET} (${l1Result.algorithm})`);
+        } else if (l1Result.error?.includes('Missing')) {
+          warn(`Level 1: ${YELLOW}NOT VERIFIABLE${RESET} (${l1Result.error})`);
         } else {
           fail(`Level 1: ${RED}INVALID${RESET} (${l1Result.error})`);
         }

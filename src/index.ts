@@ -5,6 +5,9 @@ export { controlTicket } from './control.js';
 export { getIssuingTime, getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 export { extractSignedData } from './signed-data.js';
 export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPair, getPublicKey, CURVES } from './signer.js';
+// The accepted values for the `keyAlg` / `signingAlg` fields on
+// Level1KeyMaterial and Level2Algorithms are the keys of these two tables.
+export { SIGNING_ALGORITHMS, KEY_ALGORITHMS, getSigningAlgorithm, getKeyAlgorithm } from './oids.js';
 export { SAMPLE_TICKET_HEX, SNCF_TER_TICKET_HEX, SOLEA_TICKET_HEX, BUS_ARDECHE_TICKET_HEX, BUS_AIN_TICKET_HEX, DROME_BUS_TICKET_HEX, CTS_TICKET_HEX, GRAND_EST_U1_FCB3_HEX } from './fixtures.js';
 export { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from './signature-fixtures.js';
 
@@ -36,8 +39,11 @@ export type {
   TicketLink,
   SignatureVerificationResult,
   SignatureLevelResult,
+  AlgorithmSource,
   VerifyOptions,
   Level1KeyProvider,
+  Level1KeyMaterial,
+  Level2Algorithms,
   ControlOptions,
   ControlResult,
   CheckResult,
@@ -49,6 +55,7 @@ export type {
 } from './types.js';
 
 export type { UicPublicKeyEntry } from './verifier.js';
+export type { SigningAlgorithm, KeyAlgorithm } from './oids.js';
 export type { ExtractedSignedData } from './signed-data.js';
 export type { CurveName, CurveConfig, SigningKeyPair } from './signer.js';
 

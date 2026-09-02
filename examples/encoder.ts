@@ -140,5 +140,5 @@ console.log('Data format:', decoded.level2SignedData.level1Data.dataSequence[0].
 const l2Result = await verifyLevel2Signature(barcodeBytes);
 console.log('\nLevel 2 signature valid:', l2Result.valid);
 
-const l1Result = await verifyLevel1Signature(barcodeBytes, l1Key.publicKey);
+const l1Result = await verifyLevel1Signature(barcodeBytes, { publicKey: l1Key.publicKey });
 console.log('Level 1 signature valid:', l1Result.valid);

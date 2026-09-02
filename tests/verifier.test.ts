@@ -21,6 +21,8 @@ import {
   SNCF_TER_SIGNATURES,
   SOLEA_SIGNATURES,
   CTS_SIGNATURES,
+  signAndEncodeTicket,
+  generateKeyPair,
 } from '../src';
 import { derToRaw, rawToDer, extractEcPublicKeyPoint } from '../src/signature-utils';
 import { getSigningAlgorithm, getKeyAlgorithm, curveComponentLength } from '../src/oids';
@@ -275,7 +277,10 @@ describe('findKeyInXml / parseKeysXml', () => {
   it('finds key by issuer code and key ID', () => {
     const key = findKeyInXml(sampleXml, 1187, 1);
     expect(key).not.toBeNull();
-    expect(key).toBeInstanceOf(Uint8Array);
+    expect(key!.publicKey).toBeInstanceOf(Uint8Array);
+    // The registry carries no algorithm metadata this library can use.
+    expect(key!.keyAlg).toBeUndefined();
+    expect(key!.signingAlg).toBeUndefined();
   });
 
   it('returns null for non-matching key', () => {
@@ -340,7 +345,7 @@ describe('verifySignatures', () => {
     const result = await verifySignatures(bytes, {
       level1KeyProvider: {
         async getPublicKey() {
-          return new Uint8Array(65);
+          return { publicKey: new Uint8Array(65) };
         },
       },
     });
@@ -427,14 +432,91 @@ describe('high-S / low-S signature acceptance', () => {
   it('accepts low-S signatures at both levels', async () => {
     const { bytes, publicKey } = encodeWithSHalf('low');
 
-    expect((await verifyLevel1Signature(bytes, publicKey)).valid).toBe(true);
+    expect((await verifyLevel1Signature(bytes, { publicKey })).valid).toBe(true);
     expect((await verifyLevel2Signature(bytes)).valid).toBe(true);
   });
 
   it('accepts high-S signatures at both levels', async () => {
     const { bytes, publicKey } = encodeWithSHalf('high');
 
-    expect((await verifyLevel1Signature(bytes, publicKey)).valid).toBe(true);
+    expect((await verifyLevel1Signature(bytes, { publicKey })).valid).toBe(true);
     expect((await verifyLevel2Signature(bytes)).valid).toBe(true);
+  });
+});
+
+describe('level 2 verification with configured algorithms', () => {
+  // NIST FIPS 186-4 P-256 test vector, as used elsewhere in this file.
+  const PRIV_L2 = hexToBytes(
+    'c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357',
+  );
+
+  /** Encode a signed barcode that carries a Level 2 signature but no Level 2 OIDs. */
+  function encodeWithoutLevel2Oids(): { bytes: Uint8Array; publicKey: Uint8Array } {
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const publicKey = getPublicKey(PRIV_L2, 'P-256');
+    const cfg = CURVES['P-256'];
+
+    const level1Raw = encodeLevel1Data(
+      {
+        ...ticket.level2SignedData.level1Data,
+        level1KeyAlg: cfg.keyAlgOid,
+        level1SigningAlg: cfg.sigAlgOid,
+        // level2KeyAlg / level2SigningAlg deliberately omitted
+        level2KeyAlg: undefined,
+        level2SigningAlg: undefined,
+        level2PublicKey: publicKey,
+      },
+      ticket.format,
+    );
+    const level1Signature = signPayload(level1Raw.data, PRIV_L2, 'P-256');
+
+    const level2Data = ticket.level2SignedData.level2Data;
+    const level2Raw = encodeLevel2SignedData({
+      headerVersion: parseInt(ticket.format.replace('U', ''), 10),
+      level1Data: level1Raw,
+      level1Signature,
+      level2Data: level2Data ? encodeLevel2Data(level2Data, ticket.format) : undefined,
+    });
+    const level2Signature = signPayload(level2Raw.data, PRIV_L2, 'P-256');
+
+    return {
+      bytes: encodeUicBarcode({
+        format: ticket.format,
+        level2SignedData: level2Raw,
+        level2Signature,
+      }),
+      publicKey,
+    };
+  }
+
+  it('cannot verify level 2 when the barcode omits its OIDs', async () => {
+    const { bytes } = encodeWithoutLevel2Oids();
+    const result = await verifyLevel2Signature(bytes);
+    expect(result.valid).toBe(false);
+    expect(result.error?.startsWith('Missing')).toBe(true);
+    expect(result.error).toContain('level2SigningAlg');
+  });
+
+  it('verifies level 2 when the algorithms are supplied', async () => {
+    const { bytes } = encodeWithoutLevel2Oids();
+    const result = await verifyLevel2Signature(bytes, {
+      keyAlg: CURVES['P-256'].keyAlgOid,
+      signingAlg: CURVES['P-256'].sigAlgOid,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.algorithmSource).toBe('configured');
+  });
+
+  it('accepts level2Algorithms through verifySignatures', async () => {
+    const { bytes, publicKey } = encodeWithoutLevel2Oids();
+    const result = await verifySignatures(bytes, {
+      level1Key: { publicKey },
+      level2Algorithms: {
+        keyAlg: CURVES['P-256'].keyAlgOid,
+        signingAlg: CURVES['P-256'].sigAlgOid,
+      },
+    });
+    expect(result.level1.valid).toBe(true);
+    expect(result.level2.valid).toBe(true);
   });
 });

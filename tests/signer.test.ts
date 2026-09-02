@@ -179,7 +179,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
     const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
-    const result = await verifyLevel1Signature(encoded, l1Key.publicKey);
+    const result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
 
     expect(result.valid).toBe(true);
     expect(result.algorithm).toContain('ECDSA');
@@ -204,7 +204,7 @@ describe('signature verification on re-encoded tickets', () => {
 
     const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
 
-    const l1Result = await verifyLevel1Signature(encoded, l1Key.publicKey);
+    const l1Result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
     const l2Result = await verifyLevel2Signature(encoded);
 
     expect(l1Result.valid).toBe(true);
@@ -220,7 +220,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
 
     const encoded = signAndEncodeTicket(staticTicket, l1Key);
-    const result = await verifyLevel1Signature(encoded, l1Key.publicKey);
+    const result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
 
     expect(result.valid).toBe(true);
   });
@@ -232,7 +232,7 @@ describe('signature verification on re-encoded tickets', () => {
 
     const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
 
-    const l1Result = await verifyLevel1Signature(encoded, l1Key.publicKey);
+    const l1Result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
     const l2Result = await verifyLevel2Signature(encoded);
 
     expect(l1Result.valid).toBe(true);
@@ -367,7 +367,7 @@ describe('composable flow end-to-end', () => {
     expect(decoded.level2SignedData.level1Data.dataSequence).toHaveLength(1);
 
     // Verify signatures
-    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    const l1Result = await verifyLevel1Signature(barcode, { publicKey: l1Key.publicKey });
     expect(l1Result.valid).toBe(true);
 
     const l2Result = await verifyLevel2Signature(barcode);
@@ -433,7 +433,7 @@ describe('composable flow end-to-end', () => {
     expect(decoded.level2SignedData.level2Data!.decoded).toBeDefined();
 
     // Verify signatures
-    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    const l1Result = await verifyLevel1Signature(barcode, { publicKey: l1Key.publicKey });
     expect(l1Result.valid).toBe(true);
 
     const l2Result = await verifyLevel2Signature(barcode);
@@ -469,7 +469,7 @@ describe('composable flow end-to-end', () => {
     const decoded = decodeTicketFromBytes(barcode);
     expect(decoded.format).toBe('U2');
 
-    const l1Result = await verifyLevel1Signature(barcode, l1Key.publicKey);
+    const l1Result = await verifyLevel1Signature(barcode, { publicKey: l1Key.publicKey });
     expect(l1Result.valid).toBe(true);
   });
 });

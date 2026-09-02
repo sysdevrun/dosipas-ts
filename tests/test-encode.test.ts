@@ -71,7 +71,7 @@ describe('encode → sign → control round-trip', () => {
 
     const pubKey = getPublicKey(hexToBytes(FIPS_KEY_1), 'P-256');
     const provider: Level1KeyProvider = {
-      async getPublicKey() { return pubKey; },
+      async getPublicKey() { return { publicKey: pubKey }; },
     };
     const result = await controlTicket(hex, { level1KeyProvider: provider });
     expect(result.checks.decode.passed).toBe(true);
@@ -90,7 +90,7 @@ describe('encode → sign → control round-trip', () => {
     const hex = bytesToHex(signAndEncodeTicket(ticket, l1Key));
 
     const provider: Level1KeyProvider = {
-      async getPublicKey() { return l1Key.publicKey; },
+      async getPublicKey() { return { publicKey: l1Key.publicKey }; },
     };
     const result = await controlTicket(hex, { level1KeyProvider: provider });
     expect(result.checks.decode.passed).toBe(true);

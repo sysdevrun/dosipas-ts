@@ -6,7 +6,7 @@
  * verifying one specific aspect of the ticket.
  */
 import { decodeTicket } from './decoder.js';
-import { verifyLevel1Signature, verifyLevel2Signature } from './verifier.js';
+import { verifySignatures } from './verifier.js';
 import { getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 import type {
   UicBarcodeTicket,
@@ -17,6 +17,7 @@ import type {
   ControlResult,
   ControlOptions,
   OpenTicketData,
+  SignatureLevelResult,
 } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -79,6 +80,7 @@ function checkHeader(ticket: UicBarcodeTicket): CheckResult {
 function checkSecurityInfo(ticket: UicBarcodeTicket): CheckResult {
   const l1 = ticket.level2SignedData.level1Data;
   const issues: string[] = [];
+  const notes: string[] = [];
 
   // Level 1 (mandatory)
   if (l1.securityProviderNum == null && !l1.securityProviderIA5) {
@@ -87,12 +89,20 @@ function checkSecurityInfo(ticket: UicBarcodeTicket): CheckResult {
   if (l1.keyId == null) {
     issues.push('missing keyId');
   }
-  // level1SigningAlg is only available in v2 headers; v1 headers don't include OID fields
-  if (headerVersion(ticket) >= 2 && !l1.level1SigningAlg) {
-    issues.push('missing level1SigningAlg');
-  }
   if (!ticket.level2SignedData.level1Signature) {
     issues.push('missing level1Signature');
+  }
+
+  // level1SigningAlg / level1KeyAlg are OPTIONAL in the v2 header, and some
+  // issuers share the algorithm out of band instead. Whether one can actually
+  // be resolved is the Level 1 signature check's job — it sees the caller's
+  // configuration and the key provider, which this structural check does not.
+  // So this is a note, not an error. (v1 headers never carry OID fields.)
+  if (headerVersion(ticket) >= 2 && !l1.level1SigningAlg) {
+    notes.push('level1SigningAlg absent — algorithm must be supplied out of band');
+  }
+  if (headerVersion(ticket) >= 2 && !l1.level1KeyAlg) {
+    notes.push('level1KeyAlg absent — algorithm must be supplied out of band');
   }
 
   // Level 2 (conditional)
@@ -102,57 +112,50 @@ function checkSecurityInfo(ticket: UicBarcodeTicket): CheckResult {
     if (!ticket.level2Signature) issues.push('level2SigningAlg set but missing level2Signature');
   }
 
+  const parts = [...issues, ...notes];
   return {
     name: 'Security Info',
     passed: issues.length === 0,
     severity: 'error',
-    message: issues.length > 0 ? issues.join('; ') : undefined,
+    message: parts.length > 0 ? parts.join('; ') : undefined,
   };
 }
 
-async function checkLevel1Signature(
-  bytes: Uint8Array,
-  ticket: UicBarcodeTicket,
+function checkLevel1Signature(
+  result: SignatureLevelResult,
   options: ControlOptions,
-): Promise<CheckResult> {
-  if (!options.level1KeyProvider) {
+): CheckResult {
+  if (!options.level1Key && !options.level1KeyProvider) {
     return {
       name: 'Level 1 Signature',
       passed: false,
       severity: 'error',
-      message: 'No level 1 key provider — cannot verify mandatory level 1 signature',
+      message: 'No level 1 key material — supply level1Key or level1KeyProvider',
     };
   }
 
-  try {
-    const l1 = ticket.level2SignedData.level1Data;
-    const pubKey = await options.level1KeyProvider.getPublicKey(
-      { num: l1.securityProviderNum, ia5: l1.securityProviderIA5 },
-      l1.keyId ?? 0,
-      l1.level1KeyAlg,
-    );
-    const result = await verifyLevel1Signature(bytes, pubKey);
-    return {
-      name: 'Level 1 Signature',
-      passed: result.valid,
-      severity: 'error',
-      message: result.valid ? undefined : (result.error ?? 'Verification failed'),
-    };
-  } catch (e: unknown) {
-    return {
-      name: 'Level 1 Signature',
-      passed: false,
-      severity: 'error',
-      message: e instanceof Error ? e.message : 'Key provider error',
-    };
-  }
+  return {
+    name: 'Level 1 Signature',
+    passed: result.valid,
+    severity: 'error',
+    message: result.valid ? undefined : (result.error ?? 'Verification failed'),
+    algorithm: result.algorithm,
+    algorithmSource: result.algorithmSource,
+  };
 }
 
-async function checkLevel2Signature(
-  bytes: Uint8Array,
+function checkLevel2Signature(
+  result: SignatureLevelResult,
   ticket: UicBarcodeTicket,
-): Promise<CheckResult> {
-  if (!ticket.level2SignedData.level1Data.level2SigningAlg) {
+  options: ControlOptions,
+): CheckResult {
+  // A Level 2 signature is expected when the barcode declares its signing
+  // algorithm, or when the caller supplied one for a barcode that omits it.
+  const signingAlg =
+    ticket.level2SignedData.level1Data.level2SigningAlg ??
+    options.level2Algorithms?.signingAlg;
+
+  if (!signingAlg) {
     return {
       name: 'Level 2 Signature',
       passed: true,
@@ -161,22 +164,14 @@ async function checkLevel2Signature(
     };
   }
 
-  try {
-    const result = await verifyLevel2Signature(bytes);
-    return {
-      name: 'Level 2 Signature',
-      passed: result.valid,
-      severity: 'error',
-      message: result.valid ? undefined : (result.error ?? 'Verification failed'),
-    };
-  } catch (e: unknown) {
-    return {
-      name: 'Level 2 Signature',
-      passed: false,
-      severity: 'error',
-      message: e instanceof Error ? e.message : 'Verification failed',
-    };
-  }
+  return {
+    name: 'Level 2 Signature',
+    passed: result.valid,
+    severity: 'error',
+    message: result.valid ? undefined : (result.error ?? 'Verification failed'),
+    algorithm: result.algorithm,
+    algorithmSource: result.algorithmSource,
+  };
 }
 
 function checkNotExpired(ticket: UicBarcodeTicket, now: Date): CheckResult {
@@ -666,11 +661,12 @@ export async function controlTicket(
   // 3. Security Info
   checks.securityInfo = checkSecurityInfo(ticket);
 
-  // 4. Level 1 Signature (async)
-  checks.level1Signature = await checkLevel1Signature(bytes, ticket, opts);
-
-  // 5. Level 2 Signature (async)
-  checks.level2Signature = await checkLevel2Signature(bytes, ticket);
+  // 4 & 5. Signatures — one pass over the barcode serves both checks.
+  // ControlOptions extends VerifyOptions, so key material and Level 2
+  // algorithm overrides thread straight through.
+  const signatures = await verifySignatures(bytes, opts);
+  checks.level1Signature = checkLevel1Signature(signatures.level1, opts);
+  checks.level2Signature = checkLevel2Signature(signatures.level2, ticket, opts);
 
   // 6. Not Expired
   checks.notExpired = checkNotExpired(ticket, now);
