@@ -157,3 +157,53 @@ export const CTS_SIGNATURES = {
     '00a00d805f051efcd130b17b76bf10969b626ed026423f60' +
     '24d34446eae9168fa3',
 } as const;
+
+// ---------------------------------------------------------------------------
+// Car Jaune ticket (no algorithm OIDs in the barcode)
+// ---------------------------------------------------------------------------
+
+export const CAR_JAUNE_SIGNATURES = {
+  /** Issuer identifier — an IA5 string, not a RICS code, so it is not in the UIC registry. */
+  securityProviderIA5: 'IWN8',
+  /** Key identifier — used with securityProviderIA5 to find the level 1 key. */
+  keyId: 1,
+  /**
+   * Level 1 key algorithm: secp256r1 (P-256).
+   *
+   * ABSENT from the barcode — the issuer shares it out of band. Pass it as
+   * `keyAlg` on the key material to verify this ticket.
+   */
+  level1KeyAlg: '1.2.840.10045.3.1.7',
+  /**
+   * Level 1 signing algorithm: ECDSA with SHA-256.
+   *
+   * ABSENT from the barcode, like `level1KeyAlg`. Pass it as `signingAlg`.
+   */
+  level1SigningAlg: '1.2.840.10045.4.3.2',
+  /**
+   * Level 1 public key, uncompressed P-256 point (65 bytes: 0x04 || x || y).
+   *
+   * NOT from the UIC public key registry — that registry is keyed by numeric
+   * RICS codes and this issuer identifies itself with the IA5 string "IWN8".
+   * Recovered instead by ECDSA public key recovery from six observed tickets
+   * of one batch (each signature yields two candidate keys; the intersection
+   * across two or more tickets is unique), then confirmed to verify all six.
+   * Publishing it is harmless: it is a public key.
+   */
+  level1PublicKeyHex:
+    '04dd0a600b709e5ea760b439a9a27a3d968bd30721d9d05cf85c67dc190ad973c7' +
+    'f1d78477bd554be4e3326c17e31686e8203b4634f70a75bf3a838821ba947c36',
+  /**
+   * Level 1 signature (DER-encoded ECDSA, 70 bytes) over 80 signed bytes:
+   *   SEQUENCE {
+   *     INTEGER r (32 bytes): 352d0706...b2031bff
+   *     INTEGER s (32 bytes): 157c2ee4...f0addae8
+   *   }
+   */
+  level1SignatureHex:
+    '3044' +
+    '0220352d0706d302a26340874d6e5995ffcbe36c02147411f494677d6846b2031bff' +
+    '0220157c2ee47e93b18303ef760c46b79454e1ccccf68583fc1ae2076772f0addae8',
+  /** No Level 2 block at all — this is a static barcode. */
+  level2SignatureHex: undefined,
+} as const;

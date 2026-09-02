@@ -14,7 +14,7 @@
  * Each argument can be a built-in fixture name, a path to a .hex file,
  * or inline hex data.
  *
- * Built-in fixtures: sample, sncf, solea, cts, grand_est, ardeche, ain, drome
+ * Built-in fixtures: sample, sncf, solea, cts, grand_est, ardeche, ain, drome, car_jaune
  */
 
 import * as fs from 'fs';
@@ -32,6 +32,7 @@ import {
   BUS_ARDECHE_TICKET_HEX,
   BUS_AIN_TICKET_HEX,
   DROME_BUS_TICKET_HEX,
+  CAR_JAUNE_TICKET_HEX,
 } from '../src/fixtures';
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,7 @@ const FIXTURES: Record<string, string> = {
   ardeche: BUS_ARDECHE_TICKET_HEX,
   ain: BUS_AIN_TICKET_HEX,
   drome: DROME_BUS_TICKET_HEX,
+  car_jaune: CAR_JAUNE_TICKET_HEX,
 };
 
 // ---------------------------------------------------------------------------
@@ -215,7 +217,7 @@ function main() {
     console.log('with the same key narrow the result to the real key.');
     console.log();
     console.log('Each argument can be:');
-    console.log('  A fixture name: sample, sncf, solea, cts, grand_est, ardeche, ain, drome');
+    console.log('  A fixture name: sample, sncf, solea, cts, grand_est, ardeche, ain, drome, car_jaune');
     console.log('  A path to a .hex file');
     console.log('  Inline hex data');
     process.exit(0);

@@ -117,3 +117,18 @@ export const GRAND_EST_U1_FCB3_HEX =
   '58964d38e56487095e74b9284307b673a3e9bbd671c028f1f891696947230110' +
   '8074b89dc1b249e15a958e0b1a4f7b07f4c1ec4d64a8e8f96bc17abe3bdd54c9' +
   'd300';
+
+/**
+ * Car Jaune (La Réunion) bus ticket, serial 1-00003050.
+ *
+ * U2 header with `securityProviderIA5` "IWN8" and keyId 1. Unusually it
+ * carries NO `level1KeyAlg` / `level1SigningAlg` and no Level 2 block at all:
+ * the issuer shares the Level 1 algorithm (ECDSA P-256 with SHA-256) out of
+ * band, so verifying it requires supplying those OIDs as key material.
+ */
+export const CAR_JAUNE_TICKET_HEX =
+  '0155653070249af39c00004041234384ccf48008053c916106571a94992c4104' +
+  '49418240411a0004040804a34560c583060c183060c1830610a2c1ac1007d245' +
+  '8029c6c2950b954b8810d2881454802de349d18c1100880d4b41c1b4c0a898d0' +
+  '21d35b96657ff2f8db00851d047d2519df5a11ac80c6ffc088055f0bb91fa4ec' +
+  '60c0fbdd8311ade5153873333da160ff06b881d9dcbc2b76ba00';

@@ -8,8 +8,8 @@ export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPa
 // The accepted values for the `keyAlg` / `signingAlg` fields on
 // Level1KeyMaterial and Level2Algorithms are the keys of these two tables.
 export { SIGNING_ALGORITHMS, KEY_ALGORITHMS, getSigningAlgorithm, getKeyAlgorithm } from './oids.js';
-export { SAMPLE_TICKET_HEX, SNCF_TER_TICKET_HEX, SOLEA_TICKET_HEX, BUS_ARDECHE_TICKET_HEX, BUS_AIN_TICKET_HEX, DROME_BUS_TICKET_HEX, CTS_TICKET_HEX, GRAND_EST_U1_FCB3_HEX } from './fixtures.js';
-export { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES } from './signature-fixtures.js';
+export { SAMPLE_TICKET_HEX, SNCF_TER_TICKET_HEX, SOLEA_TICKET_HEX, BUS_ARDECHE_TICKET_HEX, BUS_AIN_TICKET_HEX, DROME_BUS_TICKET_HEX, CTS_TICKET_HEX, GRAND_EST_U1_FCB3_HEX, CAR_JAUNE_TICKET_HEX } from './fixtures.js';
+export { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES, CAR_JAUNE_SIGNATURES } from './signature-fixtures.js';
 
 export type {
   UicBarcodeTicket,

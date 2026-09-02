@@ -21,9 +21,12 @@ import {
   SNCF_TER_SIGNATURES,
   SOLEA_SIGNATURES,
   CTS_SIGNATURES,
+  CAR_JAUNE_TICKET_HEX,
+  CAR_JAUNE_SIGNATURES,
   signAndEncodeTicket,
   generateKeyPair,
 } from '../src';
+import { CAR_JAUNE_TICKETS_HEX } from './fixtures/car-jaune-tickets';
 import { derToRaw, rawToDer, extractEcPublicKeyPoint } from '../src/signature-utils';
 import { getSigningAlgorithm, getKeyAlgorithm, curveComponentLength } from '../src/oids';
 
@@ -441,6 +444,91 @@ describe('high-S / low-S signature acceptance', () => {
 
     expect((await verifyLevel1Signature(bytes, { publicKey })).valid).toBe(true);
     expect((await verifyLevel2Signature(bytes)).valid).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Barcodes that omit their algorithm OIDs
+// ---------------------------------------------------------------------------
+
+describe('level 1 verification with configured algorithms', () => {
+  const carJaune = hexToBytes(CAR_JAUNE_TICKET_HEX);
+  const publicKey = hexToBytes(CAR_JAUNE_SIGNATURES.level1PublicKeyHex);
+  const algorithms = {
+    keyAlg: CAR_JAUNE_SIGNATURES.level1KeyAlg,
+    signingAlg: CAR_JAUNE_SIGNATURES.level1SigningAlg,
+  };
+
+  it('verifies a barcode with no algorithm OIDs when they are configured', async () => {
+    const result = await verifyLevel1Signature(carJaune, { publicKey, ...algorithms });
+    expect(result.valid).toBe(true);
+    expect(result.algorithm).toBe('ECDSA P-256 with SHA-256');
+    expect(result.algorithmSource).toBe('configured');
+  });
+
+  it('refuses to guess when nothing supplies the signing algorithm', async () => {
+    const result = await verifyLevel1Signature(carJaune, { publicKey });
+    expect(result.valid).toBe(false);
+    expect(result.error?.startsWith('Missing')).toBe(true);
+    expect(result.error).toContain('level1SigningAlg');
+  });
+
+  it('still refuses when only the signing algorithm is configured', async () => {
+    const result = await verifyLevel1Signature(carJaune, {
+      publicKey,
+      signingAlg: CAR_JAUNE_SIGNATURES.level1SigningAlg,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('level1KeyAlg');
+  });
+
+  it('rejects the wrong public key even with correct algorithms', async () => {
+    const wrong = getPublicKey(generateKeyPair('P-256').privateKey, 'P-256');
+    const result = await verifyLevel1Signature(carJaune, { publicKey: wrong, ...algorithms });
+    expect(result.valid).toBe(false);
+  });
+
+  // A wrong curve makes @noble/curves throw from inside the verify call
+  // (96-byte P-384 signature against a 65-byte P-256 point). That must come
+  // back as a result, not escape as an exception.
+  it('reports a wrong configured curve without throwing', async () => {
+    const result = await verifyLevel1Signature(carJaune, {
+      publicKey,
+      keyAlg: CURVES['P-384'].keyAlgOid,
+      signingAlg: CURVES['P-384'].sigAlgOid,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toMatch(/verification (failed|error)/);
+  });
+
+  it('verifies every ticket in the batch with the one recovered key', async () => {
+    for (const hex of CAR_JAUNE_TICKETS_HEX) {
+      const result = await verifyLevel1Signature(hexToBytes(hex), { publicKey, ...algorithms });
+      expect(result.valid).toBe(true);
+    }
+  });
+
+  it('threads both levels through verifySignatures', async () => {
+    const result = await verifySignatures(carJaune, {
+      level1Key: { publicKey, ...algorithms },
+    });
+    expect(result.level1.valid).toBe(true);
+    // Static barcode — there is no Level 2 block at all.
+    expect(result.level2.valid).toBe(false);
+    expect(result.level2.error).toContain('Missing level 2 signature');
+  });
+
+  it('fails loudly when a configured algorithm contradicts the barcode', async () => {
+    const key = generateKeyPair('P-256');
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const signed = signAndEncodeTicket(ticket, key);
+
+    const result = await verifyLevel1Signature(signed, {
+      publicKey: key.publicKey,
+      keyAlg: CURVES['P-384'].keyAlgOid,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.error).toContain('mismatch');
   });
 });
 

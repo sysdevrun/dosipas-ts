@@ -12,7 +12,7 @@
  *
  * Level 1 verification uses tests/fixtures/uic-publickeys.xml by default.
  *
- * Built-in fixtures: sample, sncf, solea, cts, grand_est, ardeche, ain, drome
+ * Built-in fixtures: sample, sncf, solea, cts, grand_est, ardeche, ain, drome, car_jaune
  */
 
 import * as fs from 'fs';
@@ -35,6 +35,7 @@ import {
   BUS_ARDECHE_TICKET_HEX,
   BUS_AIN_TICKET_HEX,
   DROME_BUS_TICKET_HEX,
+  CAR_JAUNE_TICKET_HEX,
 } from '../src/index';
 import { getSigningAlgorithm, getKeyAlgorithm } from '../src/oids';
 import type {
@@ -59,6 +60,7 @@ const FIXTURES: Record<string, string> = {
   ardeche: BUS_ARDECHE_TICKET_HEX,
   ain: BUS_AIN_TICKET_HEX,
   drome: DROME_BUS_TICKET_HEX,
+  car_jaune: CAR_JAUNE_TICKET_HEX,
 };
 
 // ---------------------------------------------------------------------------
@@ -338,7 +340,7 @@ async function main() {
     console.log(`Usage: npx tsx cli/decode-ticket.ts <input> [--keys path/to/keys.xml]`);
     console.log();
     console.log('Input can be:');
-    console.log('  A fixture name: sample, sncf, solea, cts, grand_est, ardeche, ain, drome');
+    console.log('  A fixture name: sample, sncf, solea, cts, grand_est, ardeche, ain, drome, car_jaune');
     console.log('  A path to a .hex file');
     console.log('  Inline hex data');
     console.log();
@@ -410,7 +412,7 @@ async function main() {
     console.log(`Using inline hex (${input.length} chars)`);
   } else {
     console.error(`Unknown input: ${input}`);
-    console.error('Use a fixture name (sample, sncf, solea, cts, grand_est, ardeche, ain, drome), a .hex file, or inline hex.');
+    console.error('Use a fixture name (sample, sncf, solea, cts, grand_est, ardeche, ain, drome, car_jaune), a .hex file, or inline hex.');
     process.exit(1);
   }
 

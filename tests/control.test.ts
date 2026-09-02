@@ -7,6 +7,8 @@ import {
   SOLEA_TICKET_HEX,
   CTS_TICKET_HEX,
   GRAND_EST_U1_FCB3_HEX,
+  CAR_JAUNE_TICKET_HEX,
+  CAR_JAUNE_SIGNATURES,
 } from '../src';
 import type { UicBarcodeTicket, Level1KeyProvider } from '../src';
 
@@ -16,6 +18,10 @@ import type { UicBarcodeTicket, Level1KeyProvider } from '../src';
 
 function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  return new Uint8Array(hex.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
 }
 
 /** Helper to build a minimal UicBarcodeTicket for testing. */
@@ -679,3 +685,51 @@ describe('controlTicket — open ticket validity', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Barcodes that omit their algorithm OIDs
+// ---------------------------------------------------------------------------
+
+describe('controlTicket — barcode without algorithm OIDs', () => {
+  const level1Key = {
+    publicKey: hexToBytes(CAR_JAUNE_SIGNATURES.level1PublicKeyHex),
+    keyAlg: CAR_JAUNE_SIGNATURES.level1KeyAlg,
+    signingAlg: CAR_JAUNE_SIGNATURES.level1SigningAlg,
+  };
+
+  it('passes security info and level 1 when algorithms are configured', async () => {
+    const result = await controlTicket(CAR_JAUNE_TICKET_HEX, { level1Key });
+
+    expect(result.checks.securityInfo.passed).toBe(true);
+    expect(result.checks.level1Signature.passed).toBe(true);
+    expect(result.checks.level1Signature.algorithm).toBe('ECDSA P-256 with SHA-256');
+    expect(result.checks.level1Signature.algorithmSource).toBe('configured');
+    // Static barcode — no Level 2 block, so the check is informational.
+    expect(result.checks.level2Signature.severity).toBe('info');
+  });
+
+  it('notes the absent OIDs on security info without failing that check', async () => {
+    const result = await controlTicket(CAR_JAUNE_TICKET_HEX, { level1Key });
+    expect(result.checks.securityInfo.message).toContain('level1SigningAlg absent');
+    expect(result.checks.securityInfo.message).toContain('level1KeyAlg absent');
+  });
+
+  // Relaxing checkSecurityInfo must not weaken the overall verdict: without
+  // key material the ticket is still not valid, it just fails in one place.
+  it('is still invalid with no key material at all', async () => {
+    const result = await controlTicket(CAR_JAUNE_TICKET_HEX);
+
+    expect(result.checks.securityInfo.passed).toBe(true);
+    expect(result.checks.level1Signature.passed).toBe(false);
+    expect(result.checks.level1Signature.message).toContain('No level 1 key material');
+    expect(result.valid).toBe(false);
+  });
+
+  it('reports a wrong key as invalid rather than unverifiable', async () => {
+    const wrong = generateKeyPair('P-256');
+    const result = await controlTicket(CAR_JAUNE_TICKET_HEX, {
+      level1Key: { ...level1Key, publicKey: wrong.publicKey },
+    });
+    expect(result.checks.level1Signature.passed).toBe(false);
+    expect(result.valid).toBe(false);
+  });
+});
