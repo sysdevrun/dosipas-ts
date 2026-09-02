@@ -2,6 +2,8 @@
 
 ## Upcoming release
 
+## [2.0.0]
+
 ### Breaking Changes
 
 - **Level 1 verification now takes key *material*, not bare key bytes.** The
