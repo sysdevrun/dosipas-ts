@@ -1,6 +1,16 @@
+import { p256 } from '@noble/curves/nist.js';
+
 import {
+  verifyLevel1Signature,
   verifyLevel2Signature,
   verifySignatures,
+  encodeLevel1Data,
+  encodeLevel2Data,
+  encodeLevel2SignedData,
+  encodeUicBarcode,
+  signPayload,
+  getPublicKey,
+  CURVES,
   extractSignedData,
   decodeTicket,
   findKeyInXml,
@@ -12,7 +22,7 @@ import {
   SOLEA_SIGNATURES,
   CTS_SIGNATURES,
 } from '../src';
-import { derToRaw, extractEcPublicKeyPoint } from '../src/signature-utils';
+import { derToRaw, rawToDer, extractEcPublicKeyPoint } from '../src/signature-utils';
 import { getSigningAlgorithm, getKeyAlgorithm, curveComponentLength } from '../src/oids';
 
 // ---------------------------------------------------------------------------
@@ -310,5 +320,93 @@ describe('verifySignatures', () => {
     expect(result.level2.valid).toBe(true);
     // Level 1 will fail because the dummy key is invalid
     expect(result.level1.valid).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S-value malleability
+// ---------------------------------------------------------------------------
+
+/**
+ * ECDSA signatures are malleable in S: both `s` and `n - s` are valid.
+ * BTC/ETH ecosystems require the "low-S" form; UIC barcode issuers do not,
+ * so verification must accept both halves. @noble/curves rejects high-S by
+ * default, which is why the verifier passes `lowS: false`.
+ */
+describe('high-S / low-S signature acceptance', () => {
+  const CURVE_ORDER = p256.Point.Fn.ORDER;
+  const PRIV = hexToBytes('c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357');
+
+  function sHalf(der: Uint8Array): 'high' | 'low' {
+    const raw = derToRaw(der, 32);
+    const s = BigInt('0x' + toHex(raw.slice(32)));
+    return s > CURVE_ORDER / 2n ? 'high' : 'low';
+  }
+
+  /** Replace `s` with `n - s`, flipping the signature to its other valid form. */
+  function flipS(der: Uint8Array): Uint8Array {
+    const raw = derToRaw(der, 32);
+    const s = CURVE_ORDER - BigInt('0x' + toHex(raw.slice(32)));
+    const flipped = new Uint8Array(64);
+    flipped.set(raw.slice(0, 32), 0);
+    flipped.set(hexToBytes(s.toString(16).padStart(64, '0')), 32);
+    return rawToDer(flipped, 32);
+  }
+
+  /** Encode a fully signed barcode, forcing every signature into `half`. */
+  function encodeWithSHalf(half: 'high' | 'low'): { bytes: Uint8Array; publicKey: Uint8Array } {
+    const force = (der: Uint8Array) => (sHalf(der) === half ? der : flipS(der));
+
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const publicKey = getPublicKey(PRIV, 'P-256');
+    const cfg = CURVES['P-256'];
+
+    const level1Raw = encodeLevel1Data(
+      {
+        ...ticket.level2SignedData.level1Data,
+        level1KeyAlg: cfg.keyAlgOid,
+        level2KeyAlg: cfg.keyAlgOid,
+        level1SigningAlg: cfg.sigAlgOid,
+        level2SigningAlg: cfg.sigAlgOid,
+        level2PublicKey: publicKey,
+      },
+      ticket.format,
+    );
+    const level1Signature = force(signPayload(level1Raw.data, PRIV, 'P-256'));
+
+    const level2Data = ticket.level2SignedData.level2Data;
+    const level2Raw = encodeLevel2SignedData({
+      headerVersion: parseInt(ticket.format.replace('U', ''), 10),
+      level1Data: level1Raw,
+      level1Signature,
+      level2Data: level2Data ? encodeLevel2Data(level2Data, ticket.format) : undefined,
+    });
+    const level2Signature = force(signPayload(level2Raw.data, PRIV, 'P-256'));
+
+    expect(sHalf(level1Signature)).toBe(half);
+    expect(sHalf(level2Signature)).toBe(half);
+
+    return {
+      bytes: encodeUicBarcode({
+        format: ticket.format,
+        level2SignedData: level2Raw,
+        level2Signature,
+      }),
+      publicKey,
+    };
+  }
+
+  it('accepts low-S signatures at both levels', async () => {
+    const { bytes, publicKey } = encodeWithSHalf('low');
+
+    expect((await verifyLevel1Signature(bytes, publicKey)).valid).toBe(true);
+    expect((await verifyLevel2Signature(bytes)).valid).toBe(true);
+  });
+
+  it('accepts high-S signatures at both levels', async () => {
+    const { bytes, publicKey } = encodeWithSHalf('high');
+
+    expect((await verifyLevel1Signature(bytes, publicKey)).valid).toBe(true);
+    expect((await verifyLevel2Signature(bytes)).valid).toBe(true);
   });
 });

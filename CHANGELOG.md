@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.5.2]
+
+### Maintenance
+
+- **Signature verification accepts both high-S and low-S ECDSA signatures**
+  (regression tests added). UIC issuers do not normalize `s` into the low half
+  of the curve order — that is a BTC/ETH convention — but `@noble/curves`
+  rejects high-S signatures by default, so the verifier passes `lowS: false`
+  (`src/verifier.ts`). This has been the behavior since the first release and
+  is unchanged; it was simply untested. `tests/verifier.test.ts` now signs a
+  ticket, forces every signature into a chosen half (`s` or `n - s`), and
+  checks that Level 1 and Level 2 both still verify, so a dependency bump
+  cannot silently reintroduce the rejection.
+
 ## [1.5.1]
 
 ### New Features
