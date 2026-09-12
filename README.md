@@ -306,6 +306,37 @@ mismatch error rather than silently preferring one. The barcode's OIDs sit
 inside the signed data, so a disagreement means either the trust store is
 misconfigured or the credential is not what you think it is.
 
+## Recovering a Level 1 public key from tickets
+
+When an issuer's key is published nowhere (e.g. the issuer identifies itself
+with an IA5 string, so it cannot be in the UIC registry), the key can be
+*recovered* from observed tickets. Each ECDSA signature yields two candidate
+keys; the true key is a candidate for every ticket of the batch, so the
+intersection across two or more tickets is unique in practice:
+
+```ts
+import { recoverLevel1PublicKey } from 'dosipas-ts';
+
+const candidates = recoverLevel1PublicKey([ticketBytes1, ticketBytes2]);
+// [Uint8Array] — one uncompressed EC point (0x04 || x || y)
+```
+
+With a single ticket, expect two candidates (either verifies that ticket —
+collect a second ticket to disambiguate). An empty result means the tickets
+were not all signed with the same key. For barcodes that omit their algorithm
+OIDs, supply them like for verification:
+
+```ts
+const candidates = recoverLevel1PublicKey([ticketBytes], {
+  keyAlg: '1.2.840.10045.3.1.7',     // P-256
+  signingAlg: '1.2.840.10045.4.3.2', // ECDSA with SHA-256
+});
+```
+
+This is how the built-in Car Jaune fixture key was obtained. Recovering a
+public key discloses no secret — it computes something any verifier of the
+batch could compute. Only ECDSA is supported (not DSA/RSA).
+
 ## Ticket control
 
 Perform comprehensive validation of a ticket in a single call:

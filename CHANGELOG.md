@@ -2,6 +2,18 @@
 
 ## Upcoming release
 
+### New Features
+
+- **ECDSA public key recovery from observed tickets**: new
+  `recoverLevel1PublicKey(tickets, options?)` recovers the Level 1 public key
+  from one or more barcodes signed with the same key. Each signature yields
+  two candidate keys; candidates not shared by every supplied ticket are
+  discarded, so two tickets are enough for a unique answer in practice.
+  Algorithm resolution follows the same rules as verification (barcode OIDs
+  first, then the configured `keyAlg`/`signingAlg`, mismatches are errors).
+  This is the technique that produced the Car Jaune fixture key, now available
+  as an API.
+
 ## [2.0.0]
 
 ### Breaking Changes

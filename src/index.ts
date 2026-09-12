@@ -1,6 +1,7 @@
 export { decodeTicket, decodeTicketFromBytes } from './decoder.js';
 export { encodeTicket, encodeTicketToBytes, encodeLevel2Data, encodeLevel1Data, encodeLevel2SignedData, encodeUicBarcode } from './encoder.js';
 export { verifySignatures, verifyLevel1Signature, verifyLevel2Signature, findKeyInXml, parseKeysXml } from './verifier.js';
+export { recoverLevel1PublicKey } from './key-recovery.js';
 export { controlTicket } from './control.js';
 export { getIssuingTime, getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 export { extractSignedData } from './signed-data.js';
@@ -55,6 +56,7 @@ export type {
 } from './types.js';
 
 export type { UicPublicKeyEntry } from './verifier.js';
+export type { RecoverLevel1KeyOptions } from './key-recovery.js';
 export type { SigningAlgorithm, KeyAlgorithm } from './oids.js';
 export type { ExtractedSignedData } from './signed-data.js';
 export type { CurveName, CurveConfig, SigningKeyPair } from './signer.js';
