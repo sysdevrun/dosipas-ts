@@ -2,6 +2,8 @@
 
 ## Upcoming release
 
+## [4.0.0]
+
 ### Breaking Changes
 
 - **Signing goes through the new asynchronous `Signer` interface** — the
