@@ -24,7 +24,7 @@ export function useTicketEncode() {
   });
 
   const encode = useCallback(
-    (
+    async (
       ticket: UicBarcodeTicket,
       level1PrivateKeyHex: string,
       level1Curve: string,
@@ -49,7 +49,7 @@ export function useTicketEncode() {
           };
         }
 
-        const bytes = signTicket(ticket, level1Key, level2Key);
+        const bytes = await signTicket(ticket, level1Key, level2Key);
         const hex = bytesToHex(bytes);
 
         setResult({ hex, bytes, error: null, loading: false });

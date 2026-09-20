@@ -3,8 +3,9 @@ import {
   signLevel1 as libSignLevel1,
   signLevel2 as libSignLevel2,
   encodeTicketToBytes as libEncodeTicketToBytes,
-  getPublicKey as libGetPublicKey,
+  derivePublicKey,
   generateKeyPair as libGenerateKeyPair,
+  localSigner,
   CURVES,
 } from 'dosipas-ts';
 import type { UicBarcodeTicket, CurveName, SigningKeyPair } from 'dosipas-ts';
@@ -17,7 +18,7 @@ export function generateKeyPair(curve: string): SigningKeyPair {
 }
 
 export function getPublicKey(privateKeyHex: string, curve: string): Uint8Array {
-  return libGetPublicKey(hexToBytes(privateKeyHex), curve as CurveName);
+  return derivePublicKey(hexToBytes(privateKeyHex), curve as CurveName);
 }
 
 /**
@@ -29,8 +30,11 @@ export function signTicket(
   ticket: UicBarcodeTicket,
   level1Key: SigningKeyPair,
   level2Key?: SigningKeyPair,
-): Uint8Array {
-  return signAndEncodeTicket(ticket, level1Key, level2Key);
+): Promise<Uint8Array> {
+  return signAndEncodeTicket(ticket, {
+    level1: localSigner(level1Key.privateKey, level1Key.curve),
+    ...(level2Key ? { level2: localSigner(level2Key.privateKey, level2Key.curve) } : {}),
+  });
 }
 
 /** Sign Level 1 data and return the DER-encoded signature bytes. */
@@ -38,8 +42,8 @@ export function signLevel1Data(
   ticket: UicBarcodeTicket,
   privateKeyHex: string,
   curve: string,
-): Uint8Array {
-  return libSignLevel1(ticket, hexToBytes(privateKeyHex), curve as CurveName);
+): Promise<Uint8Array> {
+  return libSignLevel1(ticket, localSigner(hexToBytes(privateKeyHex), curve as CurveName));
 }
 
 /** Sign Level 2 data and return the DER-encoded signature bytes. */
@@ -47,8 +51,8 @@ export function signLevel2Data(
   ticket: UicBarcodeTicket,
   privateKeyHex: string,
   curve: string,
-): Uint8Array {
-  return libSignLevel2(ticket, hexToBytes(privateKeyHex), curve as CurveName);
+): Promise<Uint8Array> {
+  return libSignLevel2(ticket, localSigner(hexToBytes(privateKeyHex), curve as CurveName));
 }
 
 /** Encode a ticket to bytes (with signatures already set). */

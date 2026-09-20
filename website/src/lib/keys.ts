@@ -1,7 +1,7 @@
 import {
   parseKeysXml,
   findKeyInXml,
-  getPublicKey as derivePublicKey,
+  derivePublicKey,
   CAR_JAUNE_SIGNATURES,
 } from 'dosipas-ts';
 import type { Level1KeyProvider, Level1KeyMaterial, UicPublicKeyEntry } from 'dosipas-ts';
