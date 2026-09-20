@@ -4,6 +4,15 @@
 
 ### New Features
 
+- **Signature collection from scanned barcodes**: new `SignatureCollector`
+  class (and one-shot `collectSignatures(payloads)` helper) classifies scanned
+  barcode payloads automatically by Level 1 key identity — issuer
+  (`securityProviderNum` or `securityProviderIA5`) plus `keyId` — extracting
+  each ticket's signatures and algorithm OIDs along the way. Rescans of the
+  same barcode are deduplicated byte-for-byte. Each group's tickets feed
+  directly into `findKeyInXml` (registry lookup) and `recoverLevel1PublicKey`
+  (key recovery from observed tickets).
+
 - **ECDSA public key recovery from observed tickets**: new
   `recoverLevel1PublicKey(tickets, options?)` recovers the Level 1 public key
   from one or more barcodes signed with the same key. Each signature yields
