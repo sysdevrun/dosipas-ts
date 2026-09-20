@@ -5,6 +5,7 @@
  * `UicBarcodeHeader` ASN.1 schema hierarchy, with decoded sub-structures
  * available on `dataSequence[i].decoded` and `level2Data.decoded`.
  */
+import type { SignatureKey } from './signed-data.js';
 
 // ---------------------------------------------------------------------------
 // UicBarcodeHeader — matches ASN.1 schema
@@ -541,9 +542,16 @@ export interface VerifyOptions {
 
 /** Provider interface for looking up Level 1 key material. */
 export interface Level1KeyProvider {
+  /**
+   * Resolve the Level 1 key material for one key identity.
+   *
+   * @param key - The key identity from the barcode: issuer
+   *   (`securityProviderNum` or `securityProviderIA5`) plus `keyId`, with
+   *   fields absent from the barcode left undefined.
+   * @param keyAlg - The barcode's `level1KeyAlg` OID, when it carries one.
+   */
   getPublicKey(
-    securityProvider: { num?: number; ia5?: string },
-    keyId: number,
+    key: SignatureKey,
     keyAlg?: string,
   ): Promise<Level1KeyMaterial>;
 }

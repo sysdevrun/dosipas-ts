@@ -19,7 +19,8 @@
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 import { sha256, sha384, sha512 } from '@noble/hashes/sha2.js';
 
-import { extractSignedData } from './signed-data.js';
+import { toExtractedTicket } from './signed-data.js';
+import type { ExtractedTicket } from './signed-data.js';
 import { resolveAlgorithms, curveComponentLength } from './oids.js';
 import { derToRaw } from './signature-utils.js';
 
@@ -94,7 +95,8 @@ const HASHES: Record<string, (msg: Uint8Array) => Uint8Array> = {
  * Jaune fixture), pass them via `options`. All tickets must resolve to the
  * same ECDSA curve and hash.
  *
- * @param tickets - Raw barcode payload bytes of the observed tickets.
+ * @param tickets - The observed tickets: raw payload bytes, or extracted
+ *   tickets (e.g. a signature group's `tickets`).
  * @param options - Algorithm OIDs to use when the barcodes omit their own.
  * @returns Candidate public keys as uncompressed EC points (0x04 || x || y).
  * @throws When no ticket is supplied, a ticket cannot be processed, the
@@ -102,7 +104,7 @@ const HASHES: Record<string, (msg: Uint8Array) => Uint8Array> = {
  *   algorithms.
  */
 export function recoverLevel1PublicKey(
-  tickets: Uint8Array[],
+  tickets: Array<Uint8Array | ExtractedTicket>,
   options?: RecoverLevel1KeyOptions,
 ): Uint8Array[] {
   if (tickets.length === 0) {
@@ -117,17 +119,16 @@ export function recoverLevel1PublicKey(
   for (let i = 0; i < tickets.length; i++) {
     let ticketCandidates: Set<string>;
     try {
-      const extracted = extractSignedData(tickets[i]);
-      const { security } = extracted;
+      const { level1 } = toExtractedTicket(tickets[i]);
 
-      if (!security.level1Signature) {
+      if (!level1.signature) {
         throw new Error('missing level 1 signature');
       }
 
       const resolved = resolveAlgorithms({
         level: 1,
-        barcodeSigningAlg: security.level1SigningAlg,
-        barcodeKeyAlg: security.level1KeyAlg,
+        barcodeSigningAlg: level1.signingAlg,
+        barcodeKeyAlg: level1.keyAlg,
         configuredSigningAlg: options?.signingAlg,
         configuredKeyAlg: options?.keyAlg,
       });
@@ -158,8 +159,8 @@ export function recoverLevel1PublicKey(
       }
 
       ticketCandidates = recoverCandidates(
-        extracted.level1DataBytes,
-        security.level1Signature,
+        level1.signedBytes,
+        level1.signature,
         curve,
         hash,
       );

@@ -2,64 +2,46 @@
  * Signature collection from scanned UIC barcodes.
  *
  * When scanning many QR codes (e.g. with a camera in a control app), each
- * scan yields a raw barcode payload. The collector extracts each payload's
- * signatures via {@link extractSignedData} and classifies them automatically
- * by Level 1 key identity — issuer (`securityProviderNum` or
- * `securityProviderIA5`) plus `keyId` — deduplicating repeated scans of the
- * same barcode along the way.
+ * scan yields a raw barcode payload. The collector extracts each payload via
+ * {@link extractTicket} and classifies it automatically by Level 1 key
+ * identity ({@link SignatureKey}: issuer + keyId), deduplicating repeated
+ * scans of the same barcode along the way. Unreadable scans are expected
+ * input in a camera loop, so `add` reports them as a result instead of
+ * throwing.
  *
- * The resulting groups plug directly into the rest of the library:
- * `findKeyInXml(xml, group.securityProviderNum, group.keyId)` looks the key
- * up in the UIC registry, and `recoverLevel1PublicKey(group.tickets.map(t =>
- * t.bytes))` recovers it from the observed tickets when it is not published.
+ * Groups store the canonical {@link ExtractedTicket} records, so they plug
+ * directly into the rest of the library: `findKeyInXml(xml, group.key)` looks
+ * the key up in the UIC registry, `recoverLevel1PublicKey(group.tickets)`
+ * recovers it from the observed tickets when it is not published, and
+ * `verifySignatures(ticket, options)` verifies without re-decoding.
  */
-import { extractSignedData } from './signed-data.js';
+import {
+  extractTicket,
+  toExtractedTicket,
+  type ExtractedTicket,
+  type SignatureKey,
+} from './signed-data.js';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** One collected ticket: its payload and the signatures extracted from it. */
-export interface CollectedTicket {
-  /** Raw barcode payload bytes, exactly as scanned. */
-  bytes: Uint8Array;
-  /** Level 1 signature (DER), absent when the barcode carries none. */
-  level1Signature?: Uint8Array;
-  /** Level 2 signature (DER), absent for static barcodes. */
-  level2Signature?: Uint8Array;
-  /** Level 1 key algorithm OID, when the barcode carries one. */
-  level1KeyAlg?: string;
-  /** Level 1 signing algorithm OID, when the barcode carries one. */
-  level1SigningAlg?: string;
-}
-
 /** Tickets sharing one Level 1 key identity (issuer + keyId). */
 export interface SignatureGroup {
-  /**
-   * Canonical group label: `"<issuer>/<keyId>"`, where issuer is the RICS
-   * code or the IA5 string (`"1187/1"`, `"IWN8/1"`). A missing part reads
-   * `"?"`. For display; group identity is the three fields below.
-   */
-  id: string;
-  /** Issuer RICS code, when the barcode identifies its issuer numerically. */
-  securityProviderNum?: number;
-  /** Issuer IA5 string, when the barcode identifies its issuer as text. */
-  securityProviderIA5?: string;
-  /** Key identifier within the issuer's key set. */
-  keyId?: number;
+  /** The shared key identity. `key.id` is the display label (e.g. "1187/1"). */
+  key: SignatureKey;
   /** Distinct collected tickets, in scan order. */
-  tickets: CollectedTicket[];
+  tickets: ExtractedTicket[];
 }
 
 /** Result of feeding one scan to {@link SignatureCollector.add}. */
-export interface AddScanResult {
-  /** The group the scan was classified into (live object, updated in place). */
-  group: SignatureGroup;
-  /** The collected ticket record for this payload. */
-  ticket: CollectedTicket;
-  /** True when this exact payload had already been collected (rescan). */
-  duplicate: boolean;
-}
+export type AddResult =
+  /** A new ticket, classified into `group` (a live object, updated in place). */
+  | { status: 'added'; group: SignatureGroup; ticket: ExtractedTicket }
+  /** This exact payload was already collected — nothing changed. */
+  | { status: 'duplicate'; group: SignatureGroup; ticket: ExtractedTicket }
+  /** The payload is not a decodable UIC barcode — nothing changed. */
+  | { status: 'invalid'; error: Error };
 
 // ---------------------------------------------------------------------------
 // Collector
@@ -72,68 +54,51 @@ export interface AddScanResult {
  * ```ts
  * const collector = new SignatureCollector();
  * for (const payload of scans) {
- *   try {
- *     const { group, duplicate } = collector.add(payload);
- *     if (!duplicate) console.log(`ticket for key ${group.id}`);
- *   } catch {
- *     // not a decodable UIC barcode — ignore the scan
- *   }
+ *   const result = collector.add(payload);
+ *   if (result.status === 'added') console.log(`ticket for key ${result.group.key.id}`);
  * }
  * const groups = collector.groups();
  * ```
  */
 export class SignatureCollector {
   private readonly groupsByKey = new Map<string, SignatureGroup>();
-  private readonly ticketsByPayload = new Map<string, AddScanResult>();
+  private readonly resultsByPayload = new Map<string, AddResult & { status: 'added' }>();
 
   /**
-   * Classify one scanned payload.
+   * Classify one scan.
    *
-   * Rescans of an already-collected payload are detected byte-for-byte and
-   * reported with `duplicate: true` without growing any group.
-   *
-   * @param bytes - Raw barcode payload bytes.
-   * @returns The group the payload belongs to and its ticket record.
-   * @throws When the payload is not a decodable UIC barcode.
+   * Accepts raw payload bytes or an already-extracted ticket (to avoid
+   * decoding twice when the scan was extracted for verification). Rescans of
+   * an already-collected payload are detected byte-for-byte and reported as
+   * `'duplicate'` without growing any group; undecodable payloads are
+   * reported as `'invalid'`.
    */
-  add(bytes: Uint8Array): AddScanResult {
-    const payloadHex = bytesToHex(bytes);
-    const seen = this.ticketsByPayload.get(payloadHex);
-    if (seen) {
-      return { ...seen, duplicate: true };
-    }
-
-    const { security } = extractSignedData(bytes);
-    const { securityProviderNum, securityProviderIA5, keyId } = security;
-
-    // Disambiguate numeric and IA5 issuers (an IA5 issuer could spell a number).
-    const mapKey =
-      (securityProviderNum != null ? `n:${securityProviderNum}` : `i:${securityProviderIA5 ?? ''}`) +
-      `|${keyId ?? ''}`;
-
-    let group = this.groupsByKey.get(mapKey);
-    if (!group) {
-      group = {
-        id: `${securityProviderNum ?? securityProviderIA5 ?? '?'}/${keyId ?? '?'}`,
-        securityProviderNum,
-        securityProviderIA5,
-        keyId,
-        tickets: [],
+  add(input: Uint8Array | ExtractedTicket): AddResult {
+    let ticket: ExtractedTicket;
+    try {
+      ticket = toExtractedTicket(input);
+    } catch (e: unknown) {
+      return {
+        status: 'invalid',
+        error: e instanceof Error ? e : new Error('unknown extraction error'),
       };
-      this.groupsByKey.set(mapKey, group);
     }
 
-    const ticket: CollectedTicket = {
-      bytes,
-      level1Signature: security.level1Signature,
-      level2Signature: security.level2Signature,
-      level1KeyAlg: security.level1KeyAlg,
-      level1SigningAlg: security.level1SigningAlg,
-    };
+    const payloadHex = bytesToHex(ticket.bytes);
+    const seen = this.resultsByPayload.get(payloadHex);
+    if (seen) {
+      return { ...seen, status: 'duplicate' };
+    }
+
+    let group = this.groupsByKey.get(mapKeyOf(ticket.key));
+    if (!group) {
+      group = { key: ticket.key, tickets: [] };
+      this.groupsByKey.set(mapKeyOf(ticket.key), group);
+    }
     group.tickets.push(ticket);
 
-    const result: AddScanResult = { group, ticket, duplicate: false };
-    this.ticketsByPayload.set(payloadHex, result);
+    const result = { status: 'added' as const, group, ticket };
+    this.resultsByPayload.set(payloadHex, result);
     return result;
   }
 
@@ -145,9 +110,19 @@ export class SignatureCollector {
     return [...this.groupsByKey.values()].sort(compareGroups);
   }
 
+  /**
+   * Look one group up by its key, or by its canonical `id` label. On the
+   * rare label collision (a purely numeric IA5 issuer), a string matches the
+   * numeric-issuer group first; pass a {@link SignatureKey} to be exact.
+   */
+  group(key: SignatureKey | string): SignatureGroup | undefined {
+    if (typeof key !== 'string') return this.groupsByKey.get(mapKeyOf(key));
+    return this.groups().find(g => g.key.id === key);
+  }
+
   /** Number of distinct tickets collected (duplicates excluded). */
   get size(): number {
-    return this.ticketsByPayload.size;
+    return this.resultsByPayload.size;
   }
 }
 
@@ -155,21 +130,22 @@ export class SignatureCollector {
  * Classify a batch of payloads by Level 1 key identity in one call.
  *
  * Convenience wrapper over {@link SignatureCollector} for when all scans are
- * already in hand. Duplicated payloads are collected once.
+ * already in hand. Duplicated payloads are collected once. Unlike the
+ * collector's `add`, an undecodable payload here is a programming error, so
+ * it throws, naming the payload's index.
  *
- * @param payloads - Raw barcode payload bytes of each scan.
+ * @param payloads - Raw payload bytes (or extracted tickets) of each scan.
  * @returns Signature groups, sorted as {@link SignatureCollector.groups}.
- * @throws When a payload is not a decodable UIC barcode, naming its index.
  */
-export function collectSignatures(payloads: Iterable<Uint8Array>): SignatureGroup[] {
+export function collectSignatures(
+  payloads: Iterable<Uint8Array | ExtractedTicket>,
+): SignatureGroup[] {
   const collector = new SignatureCollector();
   let i = 0;
   for (const payload of payloads) {
-    try {
-      collector.add(payload);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'unknown error';
-      throw new Error(`Payload #${i}: ${msg}`);
+    const result = collector.add(payload);
+    if (result.status === 'invalid') {
+      throw new Error(`Payload #${i}: ${result.error.message}`);
     }
     i++;
   }
@@ -180,15 +156,26 @@ export function collectSignatures(payloads: Iterable<Uint8Array>): SignatureGrou
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Grouping key: unlike `key.id`, it cannot collide between a numeric issuer
+ * and an IA5 issuer that spells the same number.
+ */
+function mapKeyOf(key: SignatureKey): string {
+  const issuer = key.securityProviderNum != null
+    ? `n:${key.securityProviderNum}`
+    : `i:${key.securityProviderIA5 ?? ''}`;
+  return `${issuer}|${key.keyId ?? ''}`;
+}
+
 function compareGroups(a: SignatureGroup, b: SignatureGroup): number {
-  const aNum = a.securityProviderNum;
-  const bNum = b.securityProviderNum;
+  const aNum = a.key.securityProviderNum;
+  const bNum = b.key.securityProviderNum;
   if (aNum != null && bNum != null && aNum !== bNum) return aNum - bNum;
   if ((aNum != null) !== (bNum != null)) return aNum != null ? -1 : 1;
-  const aIa5 = a.securityProviderIA5 ?? '';
-  const bIa5 = b.securityProviderIA5 ?? '';
+  const aIa5 = a.key.securityProviderIA5 ?? '';
+  const bIa5 = b.key.securityProviderIA5 ?? '';
   if (aIa5 !== bIa5) return aIa5 < bIa5 ? -1 : 1;
-  return (a.keyId ?? -1) - (b.keyId ?? -1);
+  return (a.key.keyId ?? -1) - (b.key.keyId ?? -1);
 }
 
 function bytesToHex(bytes: Uint8Array): string {

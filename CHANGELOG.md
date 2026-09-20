@@ -2,16 +2,45 @@
 
 ## Upcoming release
 
+### Breaking Changes
+
+- **`extractSignedData` is replaced by `extractTicket`**, which returns the
+  new canonical `ExtractedTicket` record: the same information restructured
+  per level (`level1` / `level2`, each with `signedBytes`, `signature`,
+  `keyAlg`, `signingAlg`, plus `level2.publicKey`), together with the payload
+  (`bytes`) and the Level 1 key identity (`key: SignatureKey`). The
+  `ExtractedSignedData` type and its flat `security` bag are gone. See
+  *Migrating from 2.0.0* below.
+
+- **`Level1KeyProvider.getPublicKey` now takes a `SignatureKey`**:
+  `getPublicKey(key, keyAlg?)` instead of
+  `getPublicKey(securityProvider, keyId, keyAlg?)`. The key identity fields
+  are `key.securityProviderNum`, `key.securityProviderIA5` and `key.keyId`
+  (each undefined when absent from the barcode — `keyId` is no longer
+  defaulted to `0`), and `key.id` is a canonical label for messages.
+
 ### New Features
 
+- **One extraction, used everywhere**: `verifySignatures`,
+  `verifyLevel1Signature`, `verifyLevel2Signature` and
+  `recoverLevel1PublicKey` now accept an `ExtractedTicket` in place of raw
+  payload bytes, so a scan pipeline decodes each payload exactly once.
+  `findKeyInXml` gains an overload taking a `SignatureKey`
+  (`findKeyInXml(xml, ticket.key)`), returning `null` for IA5-identified
+  issuers, which the registry cannot contain. A `signatureKey(fields)` helper
+  builds a `SignatureKey` with its canonical `id` computed.
+
 - **Signature collection from scanned barcodes**: new `SignatureCollector`
-  class (and one-shot `collectSignatures(payloads)` helper) classifies scanned
-  barcode payloads automatically by Level 1 key identity — issuer
-  (`securityProviderNum` or `securityProviderIA5`) plus `keyId` — extracting
-  each ticket's signatures and algorithm OIDs along the way. Rescans of the
-  same barcode are deduplicated byte-for-byte. Each group's tickets feed
-  directly into `findKeyInXml` (registry lookup) and `recoverLevel1PublicKey`
-  (key recovery from observed tickets).
+  class (and one-shot `collectSignatures(payloads)` helper) classifies
+  scanned payloads automatically by Level 1 key identity (`SignatureKey`:
+  issuer + keyId). `add(bytes | ExtractedTicket)` returns
+  `{ status: 'added' | 'duplicate' | 'invalid', ... }` — rescans of the same
+  barcode are deduplicated byte-for-byte, and unreadable scans are reported
+  rather than thrown, as expected in a camera loop. Groups store full
+  `ExtractedTicket` records, so they feed directly into
+  `findKeyInXml(xml, group.key)`, `recoverLevel1PublicKey(group.tickets)`
+  and `verifySignatures(ticket, options)`. `collector.group(key | id)` looks
+  a single group up.
 
 - **ECDSA public key recovery from observed tickets**: new
   `recoverLevel1PublicKey(tickets, options?)` recovers the Level 1 public key
@@ -22,6 +51,55 @@
   first, then the configured `keyAlg`/`signingAlg`, mismatches are errors).
   This is the technique that produced the Car Jaune fixture key, now available
   as an API.
+
+### Migrating from 2.0.0
+
+These changes apply when upgrading from `2.0.0` (or any earlier `1.x`/`2.x`
+release carrying `extractSignedData`). Only extraction and the key-provider
+interface changed; `decodeTicket`, encoding, signing and every call that
+passes raw payload bytes to the verify functions keep working unchanged.
+
+**Extraction** — rename the call and move the field accesses:
+
+| 2.0.0 | Now |
+| --- | --- |
+| `extractSignedData(bytes)` | `extractTicket(bytes)` |
+| `ExtractedSignedData` (type) | `ExtractedTicket` |
+| `.level1DataBytes` | `.level1.signedBytes` |
+| `.level2SignedBytes` | `.level2.signedBytes` |
+| `.security.level1Signature` | `.level1.signature` |
+| `.security.level2Signature` | `.level2.signature` |
+| `.security.level1KeyAlg` / `.level1SigningAlg` | `.level1.keyAlg` / `.level1.signingAlg` |
+| `.security.level2KeyAlg` / `.level2SigningAlg` | `.level2.keyAlg` / `.level2.signingAlg` |
+| `.security.level2PublicKey` | `.level2.publicKey` |
+| `.security.securityProviderNum` / `IA5` | `.key.securityProviderNum` / `IA5` |
+| `.security.keyId` | `.key.keyId` |
+
+**Key providers** — one parameter object instead of three arguments:
+
+```ts
+// 2.0.0
+const provider: Level1KeyProvider = {
+  async getPublicKey(securityProvider, keyId) {
+    const key = findKeyInXml(xml, securityProvider.num!, keyId);
+    if (!key) throw new Error('Key not found');
+    return key;
+  },
+};
+
+// Now
+const provider: Level1KeyProvider = {
+  async getPublicKey(key) {
+    const material = findKeyInXml(xml, key); // null for IA5 issuers
+    if (!material) throw new Error(`Key not found: ${key.id}`);
+    return material;
+  },
+};
+```
+
+Note that `keyId` is no longer defaulted to `0` before reaching the provider:
+a barcode carrying no `keyId` now yields `key.keyId === undefined`. If your
+provider relied on the old default, apply `key.keyId ?? 0` yourself.
 
 ## [2.0.0]
 

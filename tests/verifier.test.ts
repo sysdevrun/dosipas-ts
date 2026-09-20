@@ -11,7 +11,7 @@ import {
   signPayload,
   getPublicKey,
   CURVES,
-  extractSignedData,
+  extractTicket,
   decodeTicket,
   findKeyInXml,
   parseKeysXml,
@@ -157,50 +157,50 @@ describe('extractEcPublicKeyPoint', () => {
 // Signed data extraction tests
 // ---------------------------------------------------------------------------
 
-describe('extractSignedData', () => {
+describe('extractTicket', () => {
   it('extracts signed bytes from SNCF TER ticket', () => {
     const bytes = hexToBytes(SNCF_TER_TICKET_HEX);
-    const extracted = extractSignedData(bytes);
+    const extracted = extractTicket(bytes);
 
-    expect(extracted.level1DataBytes).toBeInstanceOf(Uint8Array);
-    expect(extracted.level1DataBytes.length).toBeGreaterThan(0);
-    expect(extracted.level2SignedBytes).toBeInstanceOf(Uint8Array);
-    expect(extracted.level2SignedBytes.length).toBeGreaterThan(0);
-    expect(extracted.level2SignedBytes.length).toBeGreaterThan(extracted.level1DataBytes.length);
+    expect(extracted.level1.signedBytes).toBeInstanceOf(Uint8Array);
+    expect(extracted.level1.signedBytes.length).toBeGreaterThan(0);
+    expect(extracted.level2.signedBytes).toBeInstanceOf(Uint8Array);
+    expect(extracted.level2.signedBytes.length).toBeGreaterThan(0);
+    expect(extracted.level2.signedBytes.length).toBeGreaterThan(extracted.level1.signedBytes.length);
   });
 
   it('extracts correct security metadata from Soléa ticket', () => {
     const bytes = hexToBytes(SOLEA_TICKET_HEX);
-    const extracted = extractSignedData(bytes);
+    const extracted = extractTicket(bytes);
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
 
     // Verify extraction matches decodeTicket output
     const l1 = ticket.level2SignedData.level1Data;
-    expect(extracted.security.securityProviderNum).toBe(l1.securityProviderNum);
-    expect(extracted.security.keyId).toBe(l1.keyId);
-    expect(extracted.security.level1SigningAlg).toBe(l1.level1SigningAlg);
-    expect(extracted.security.level2SigningAlg).toBe(l1.level2SigningAlg);
-    expect(extracted.security.level1KeyAlg).toBe(l1.level1KeyAlg);
-    expect(extracted.security.level2KeyAlg).toBe(l1.level2KeyAlg);
+    expect(extracted.key.securityProviderNum).toBe(l1.securityProviderNum);
+    expect(extracted.key.keyId).toBe(l1.keyId);
+    expect(extracted.level1.signingAlg).toBe(l1.level1SigningAlg);
+    expect(extracted.level2.signingAlg).toBe(l1.level2SigningAlg);
+    expect(extracted.level1.keyAlg).toBe(l1.level1KeyAlg);
+    expect(extracted.level2.keyAlg).toBe(l1.level2KeyAlg);
 
     // Also verify specific expected values
-    expect(extracted.security.securityProviderNum).toBe(3703);
-    expect(extracted.security.keyId).toBe(7);
-    expect(extracted.security.level2SigningAlg).toBe('1.2.840.10045.4.3.2');
+    expect(extracted.key.securityProviderNum).toBe(3703);
+    expect(extracted.key.keyId).toBe(7);
+    expect(extracted.level2.signingAlg).toBe('1.2.840.10045.4.3.2');
   });
 
   it('extracts signatures matching decoded ticket for CTS', () => {
     const bytes = hexToBytes(CTS_TICKET_HEX);
-    const extracted = extractSignedData(bytes);
+    const extracted = extractTicket(bytes);
     const ticket = decodeTicket(CTS_TICKET_HEX);
 
-    expect(extracted.security.level1Signature).toBeDefined();
-    expect(toHex(extracted.security.level1Signature!)).toBe(
+    expect(extracted.level1.signature).toBeDefined();
+    expect(toHex(extracted.level1.signature!)).toBe(
       toHex(ticket.level2SignedData.level1Signature!)
     );
 
-    expect(extracted.security.level2Signature).toBeDefined();
-    expect(toHex(extracted.security.level2Signature!)).toBe(
+    expect(extracted.level2.signature).toBeDefined();
+    expect(toHex(extracted.level2.signature!)).toBe(
       toHex(ticket.level2Signature!)
     );
   });
