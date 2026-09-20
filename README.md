@@ -389,6 +389,44 @@ extracted.level2SignedBytes // bytes signed by level2Signature
 extracted.security          // security metadata (algorithms, keys, signatures)
 ```
 
+## Collecting signatures from many scans
+
+When scanning many QR codes (e.g. with a camera in a control app), feed each
+scanned payload to a `SignatureCollector`: signatures are extracted and
+classified automatically by Level 1 key identity — issuer
+(`securityProviderNum` or `securityProviderIA5`) plus `keyId` — and rescans of
+the same barcode are deduplicated byte-for-byte:
+
+```ts
+import { SignatureCollector } from 'dosipas-ts';
+
+const collector = new SignatureCollector();
+
+for (const payload of scans) {
+  try {
+    const { group, duplicate } = collector.add(payload);
+    if (!duplicate) console.log(`new ticket for key ${group.id}`); // e.g. "1187/1"
+  } catch {
+    // not a decodable UIC barcode — ignore the scan
+  }
+}
+
+for (const group of collector.groups()) {
+  group.id                  // "1187/1", "IWN8/1", ...
+  group.securityProviderNum // 1187 (or undefined for IA5 issuers)
+  group.securityProviderIA5 // "IWN8" (or undefined for numeric issuers)
+  group.keyId               // 1
+  group.tickets             // [{ bytes, level1Signature, level2Signature, ... }]
+}
+```
+
+For a batch already in hand, `collectSignatures(payloads)` does the same in
+one call. Each group plugs directly into the rest of the library: look its key
+up in the UIC registry with
+`findKeyInXml(xml, group.securityProviderNum, group.keyId)`, or recover it
+from the observed tickets with
+`recoverLevel1PublicKey(group.tickets.map(t => t.bytes))`.
+
 ## UIC public key XML utilities
 
 ```ts
