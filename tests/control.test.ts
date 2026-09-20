@@ -1,6 +1,7 @@
 import {
   controlTicket,
   signAndEncodeTicket,
+  localSigner,
   generateKeyPair,
   SAMPLE_TICKET_HEX,
   SNCF_TER_TICKET_HEX,
@@ -245,7 +246,7 @@ describe('controlTicket — specimen', () => {
       endOfValidityYear: 2099,
       endOfValidityDay: 365,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
 
     const result = await controlTicket(hex);
@@ -322,7 +323,7 @@ describe('controlTicket — missing network ID', () => {
       endOfValidityYear: 2099,
       endOfValidityDay: 365,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
 
     const result = await controlTicket(hex, {
@@ -392,7 +393,7 @@ describe('controlTicket — zones & carriers', () => {
   ) {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({ ...baseOpts, openTicketValue, ticketKey });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
     return controlTicket(hex, controlOpts);
   }
@@ -560,7 +561,7 @@ describe('controlTicket — open ticket validity', () => {
   ) {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({ ...baseOpts, openTicketValue, ticketKey });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
     return controlTicket(hex, controlOpts);
   }
@@ -678,7 +679,7 @@ describe('controlTicket — open ticket validity', () => {
         },
       },
     };
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
     const result = await controlTicket(hex, { now: new Date('2025-06-15T12:00:00Z') });
     expect(result.checks.openTicketValidity.passed).toBe(true);

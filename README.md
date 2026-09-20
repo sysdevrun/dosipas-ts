@@ -143,10 +143,23 @@ const bytes = encodeTicketToBytes(ticket);
 
 ## Signing
 
-Sign tickets with ECDSA using the two-pass signing flow (Level 1, then Level 2):
+Signing goes through the `Signer` interface — the signing-side counterpart of
+`Level1KeyProvider`. A signer wraps wherever the private key actually lives:
+`localSigner(privateKey, curve)` for a raw key in memory, or your own wrapper
+over WebCrypto (non-extractable keys), an HSM or a cloud KMS:
 
 ```ts
-import { signAndEncodeTicket, generateKeyPair } from 'dosipas-ts';
+interface Signer {
+  curve: CurveName;                             // decides the OIDs and the hash
+  sign(data: Uint8Array): Promise<Uint8Array>;  // DER-encoded ECDSA signature
+  getPublicKey?(): Promise<Uint8Array>;         // required for Level 2 signers
+}
+```
+
+Sign tickets with the two-level flow (Level 1, then Level 2):
+
+```ts
+import { signAndEncodeTicket, generateKeyPair, localSigner } from 'dosipas-ts';
 import type { UicBarcodeTicket } from 'dosipas-ts';
 
 const level1Key = generateKeyPair('P-256');
@@ -178,23 +191,31 @@ const ticket: UicBarcodeTicket = {
   },
 };
 
-const ticketBytes = signAndEncodeTicket(
-  ticket,
-  level1Key,
-  level2Key, // omit for static barcodes (Level 1 only)
-);
+const ticketBytes = await signAndEncodeTicket(ticket, {
+  level1: localSigner(level1Key.privateKey, 'P-256'),
+  level2: localSigner(level2Key.privateKey, 'P-256'), // omit for static barcodes
+});
 ```
 
-For finer control, sign each level independently:
+`signAndEncodeTicket` treats the signers as authoritative: the algorithm OIDs
+(and the Level 2 public key) are written into the header from the signers,
+whatever the input ticket carried, so its output is always self-consistent.
+
+For finer control, sign each level independently. The low-level functions
+sign the ticket's data **exactly as given** — an OID on the ticket that
+contradicts the signer's curve is an error, and absent OIDs stay absent
+(that is how barcodes whose algorithms are shared out of band are produced):
 
 ```ts
-import { signLevel1, signLevel2 } from 'dosipas-ts';
+import { signLevel1, signLevel2, localSigner } from 'dosipas-ts';
 
-const level1Sig = signLevel1(ticket, privateKey, 'P-256');
-const level2Sig = signLevel2(
+const signer1 = localSigner(privateKey, 'P-256');
+const signer2 = localSigner(level2PrivateKey, 'P-256');
+
+const level1Sig = await signLevel1(ticket, signer1);
+const level2Sig = await signLevel2(
   { ...ticket, level2SignedData: { ...ticket.level2SignedData, level1Signature: level1Sig } },
-  level2PrivateKey,
-  'P-256',
+  signer2,
 );
 ```
 

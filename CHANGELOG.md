@@ -2,6 +2,81 @@
 
 ## Upcoming release
 
+### Breaking Changes
+
+- **Signing goes through the new asynchronous `Signer` interface** — the
+  signing-side counterpart of `Level1KeyProvider`. A `Signer` wraps wherever
+  the private key actually lives: `localSigner(privateKey, curve)` for a raw
+  key in memory, or your own wrapper over WebCrypto (non-extractable keys),
+  an HSM or a cloud KMS. Consequences:
+  - `signAndEncodeTicket(ticket, level1Key, level2Key?)` becomes
+    `signAndEncodeTicket(ticket, { level1, level2? })` taking `Signer`s, and
+    returns a `Promise<Uint8Array>`.
+  - `signLevel1(ticket, privateKey, curve)` and
+    `signLevel2(ticket, privateKey, curve)` become
+    `signLevel1(ticket, signer)` / `signLevel2(ticket, signer)`, both async.
+  - `SigningKeyPair` is no longer accepted by the signing functions; it
+    remains only as the return type of `generateKeyPair`.
+
+- **One algorithm-OID policy, aligned with the verifier's "a disagreement is
+  an error" rule.** `signAndEncodeTicket` is authoritative: it writes the
+  OIDs — and the Level 2 public key — from the signers into the header,
+  whatever the input ticket carried, so its output is always
+  self-consistent. `signLevel1`/`signLevel2` sign the ticket's data
+  **exactly as given**: an OID present on the ticket that contradicts the
+  signer's curve is now an error (previously `signLevel1` silently filled
+  missing OIDs into the *signed* bytes without putting them on the ticket,
+  which produced unverifiable barcodes if the caller encoded without them),
+  and a missing OID stays missing.
+
+- **`getPublicKey` (public-key derivation) is renamed `derivePublicKey`**,
+  dissolving the name collision with `Level1KeyProvider.getPublicKey`.
+
+### New Features
+
+- **HSM / KMS / WebCrypto signing**: implement `Signer` over any backend
+  that can produce a DER ECDSA signature — the raw private key never has to
+  enter the library. The Level 2 signer must expose `getPublicKey()` (its
+  key is embedded in the barcode); a Level 1 signer can omit it.
+
+- **Producing barcodes that omit their algorithm OIDs** (algorithms shared
+  out of band, like the Car Jaune fixture) is now possible: leave the OIDs
+  off the ticket and use `signLevel1` — what is signed is exactly what is
+  encoded. The old placeholder-based flow silently signed filled-in OIDs,
+  making such barcodes impossible to produce correctly.
+
+- `signLevel1`/`signLevel2` no longer re-encode the whole ticket with
+  placeholder signatures (three encodes down to one); they are built on the
+  same composable primitives as `signAndEncodeTicket`.
+
+### Migrating from 3.0.0
+
+Only the signing API changed; decoding, encoding primitives (`signPayload`
+included), verification, extraction and collection are untouched.
+
+| 3.0.0 | Now |
+| --- | --- |
+| `signAndEncodeTicket(ticket, l1Key, l2Key)` | `await signAndEncodeTicket(ticket, { level1: localSigner(l1Key.privateKey, l1Key.curve), level2: localSigner(l2Key.privateKey, l2Key.curve) })` |
+| `signAndEncodeTicket(ticket, l1Key)` | `await signAndEncodeTicket(ticket, { level1: localSigner(l1Key.privateKey, l1Key.curve) })` |
+| `signLevel1(ticket, privateKey, curve)` | `await signLevel1(ticket, localSigner(privateKey, curve))` |
+| `signLevel2(ticket, privateKey, curve)` | `await signLevel2(ticket, localSigner(privateKey, curve))` |
+| `getPublicKey(privateKey, curve)` | `derivePublicKey(privateKey, curve)` |
+
+Behavioral changes to review when migrating:
+
+- Every signing call is now `await`ed — callers become async.
+- `signLevel1`/`signLevel2` no longer fill missing algorithm OIDs into the
+  signed bytes. If you relied on that, set the OIDs on the ticket yourself
+  before signing (e.g. `level1KeyAlg: CURVES[curve].keyAlgOid`,
+  `level1SigningAlg: CURVES[curve].sigAlgOid`) — which 3.0.0 already
+  required anyway for the final encode to match what was signed. If you
+  left them off deliberately, the signature now correctly covers a header
+  without OIDs.
+- `signLevel1`/`signLevel2` now throw when the ticket's OIDs contradict the
+  signer's curve, instead of signing bytes that could never verify.
+- A custom Level 2 `Signer` must implement `getPublicKey()`;
+  `localSigner` always does.
+
 ## [3.0.0]
 
 ### Breaking Changes

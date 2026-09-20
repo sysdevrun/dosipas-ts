@@ -9,7 +9,7 @@ import {
   encodeLevel2SignedData,
   encodeUicBarcode,
   signPayload,
-  getPublicKey,
+  derivePublicKey,
   CURVES,
   extractTicket,
   decodeTicket,
@@ -24,6 +24,7 @@ import {
   CAR_JAUNE_TICKET_HEX,
   CAR_JAUNE_SIGNATURES,
   signAndEncodeTicket,
+  localSigner,
   generateKeyPair,
 } from '../src';
 import { CAR_JAUNE_TICKETS_HEX } from './fixtures/car-jaune-tickets';
@@ -48,27 +49,27 @@ function toHex(bytes: Uint8Array): string {
 // ---------------------------------------------------------------------------
 
 describe('OID mapping', () => {
-  it('maps ECDSA with SHA-256 signing algorithm', () => {
+  it('maps ECDSA with SHA-256 signing algorithm', async () => {
     const alg = getSigningAlgorithm('1.2.840.10045.4.3.2');
     expect(alg).toEqual({ hash: 'SHA-256', type: 'ECDSA' });
   });
 
-  it('maps DSA with SHA-224 signing algorithm', () => {
+  it('maps DSA with SHA-224 signing algorithm', async () => {
     const alg = getSigningAlgorithm('2.16.840.1.101.3.4.3.1');
     expect(alg).toEqual({ hash: 'SHA-224', type: 'DSA' });
   });
 
-  it('maps P-256 key algorithm', () => {
+  it('maps P-256 key algorithm', async () => {
     const alg = getKeyAlgorithm('1.2.840.10045.3.1.7');
     expect(alg).toEqual({ curve: 'P-256', type: 'EC' });
   });
 
-  it('returns undefined for unknown OID', () => {
+  it('returns undefined for unknown OID', async () => {
     expect(getSigningAlgorithm('1.2.3.4.5')).toBeUndefined();
     expect(getKeyAlgorithm('1.2.3.4.5')).toBeUndefined();
   });
 
-  it('returns correct component lengths', () => {
+  it('returns correct component lengths', async () => {
     expect(curveComponentLength('P-256')).toBe(32);
     expect(curveComponentLength('P-384')).toBe(48);
     expect(curveComponentLength('P-521')).toBe(66);
@@ -80,7 +81,7 @@ describe('OID mapping', () => {
 // ---------------------------------------------------------------------------
 
 describe('derToRaw', () => {
-  it('converts 71-byte ECDSA P-256 DER signature (one padded integer)', () => {
+  it('converts 71-byte ECDSA P-256 DER signature (one padded integer)', async () => {
     const der = hexToBytes(SOLEA_SIGNATURES.level1SignatureHex);
     expect(der.length).toBe(71);
 
@@ -96,7 +97,7 @@ describe('derToRaw', () => {
     );
   });
 
-  it('converts 72-byte ECDSA P-256 DER signature (both padded)', () => {
+  it('converts 72-byte ECDSA P-256 DER signature (both padded)', async () => {
     const der = hexToBytes(CTS_SIGNATURES.level1SignatureHex);
     expect(der.length).toBe(72);
 
@@ -111,7 +112,7 @@ describe('derToRaw', () => {
     );
   });
 
-  it('converts 46-byte DSA DER signature', () => {
+  it('converts 46-byte DSA DER signature', async () => {
     const der = hexToBytes(SNCF_TER_SIGNATURES.level1SignatureHex);
     expect(der.length).toBe(46);
 
@@ -126,7 +127,7 @@ describe('derToRaw', () => {
     );
   });
 
-  it('rejects invalid DER', () => {
+  it('rejects invalid DER', async () => {
     expect(() => derToRaw(new Uint8Array([0x01, 0x02]), 32)).toThrow();
   });
 });
@@ -136,14 +137,14 @@ describe('derToRaw', () => {
 // ---------------------------------------------------------------------------
 
 describe('extractEcPublicKeyPoint', () => {
-  it('passes through uncompressed point (65 bytes)', () => {
+  it('passes through uncompressed point (65 bytes)', async () => {
     const point = new Uint8Array(65);
     point[0] = 0x04;
     const result = extractEcPublicKeyPoint(point);
     expect(result).toBe(point);
   });
 
-  it('passes through compressed point (33 bytes)', () => {
+  it('passes through compressed point (33 bytes)', async () => {
     const point = hexToBytes(
       '028f3d46312f69e918100e8c4ea1d3fb726d118271174fba406dd97e089c44d972'
     );
@@ -158,7 +159,7 @@ describe('extractEcPublicKeyPoint', () => {
 // ---------------------------------------------------------------------------
 
 describe('extractTicket', () => {
-  it('extracts signed bytes from SNCF TER ticket', () => {
+  it('extracts signed bytes from SNCF TER ticket', async () => {
     const bytes = hexToBytes(SNCF_TER_TICKET_HEX);
     const extracted = extractTicket(bytes);
 
@@ -169,7 +170,7 @@ describe('extractTicket', () => {
     expect(extracted.level2.signedBytes.length).toBeGreaterThan(extracted.level1.signedBytes.length);
   });
 
-  it('extracts correct security metadata from Soléa ticket', () => {
+  it('extracts correct security metadata from Soléa ticket', async () => {
     const bytes = hexToBytes(SOLEA_TICKET_HEX);
     const extracted = extractTicket(bytes);
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
@@ -189,7 +190,7 @@ describe('extractTicket', () => {
     expect(extracted.level2.signingAlg).toBe('1.2.840.10045.4.3.2');
   });
 
-  it('extracts signatures matching decoded ticket for CTS', () => {
+  it('extracts signatures matching decoded ticket for CTS', async () => {
     const bytes = hexToBytes(CTS_TICKET_HEX);
     const extracted = extractTicket(bytes);
     const ticket = decodeTicket(CTS_TICKET_HEX);
@@ -277,7 +278,7 @@ describe('findKeyInXml / parseKeysXml', () => {
   </key>
 </keys>`;
 
-  it('finds key by issuer code and key ID', () => {
+  it('finds key by issuer code and key ID', async () => {
     const key = findKeyInXml(sampleXml, 1187, 1);
     expect(key).not.toBeNull();
     expect(key!.publicKey).toBeInstanceOf(Uint8Array);
@@ -286,12 +287,12 @@ describe('findKeyInXml / parseKeysXml', () => {
     expect(key!.signingAlg).toBeUndefined();
   });
 
-  it('returns null for non-matching key', () => {
+  it('returns null for non-matching key', async () => {
     const key = findKeyInXml(sampleXml, 1187, 99);
     expect(key).toBeNull();
   });
 
-  it('skips entries whose base64 is malformed instead of throwing', () => {
+  it('skips entries whose base64 is malformed instead of throwing', async () => {
     // The live UIC registry contains an entry whose base64 length is 1 mod 4
     // (issuer 1182, key 2). atob rejects it; one bad row must not cost every key.
     const withBadEntry = sampleXml.replace(
@@ -307,7 +308,7 @@ describe('findKeyInXml / parseKeysXml', () => {
     expect(keys.map(k => k.issuerCode)).not.toContain(1182);
   });
 
-  it('surfaces a malformed key as an error rather than a miss', () => {
+  it('surfaces a malformed key as an error rather than a miss', async () => {
     const withBadEntry = sampleXml.replace(
       '</keys>',
       '<key><issuerName>Broken</issuerName><issuerCode>1182</issuerCode>' +
@@ -319,7 +320,7 @@ describe('findKeyInXml / parseKeysXml', () => {
     expect(() => findKeyInXml(withBadEntry, 1182, 2)).toThrow(/Malformed base64/);
   });
 
-  it('parses all keys', () => {
+  it('parses all keys', async () => {
     const keys = parseKeysXml(sampleXml);
     expect(keys).toHaveLength(2);
     expect(keys[0].issuerCode).toBe(1187);
@@ -394,7 +395,7 @@ describe('high-S / low-S signature acceptance', () => {
     const force = (der: Uint8Array) => (sHalf(der) === half ? der : flipS(der));
 
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
-    const publicKey = getPublicKey(PRIV, 'P-256');
+    const publicKey = derivePublicKey(PRIV, 'P-256');
     const cfg = CURVES['P-256'];
 
     const level1Raw = encodeLevel1Data(
@@ -483,7 +484,7 @@ describe('level 1 verification with configured algorithms', () => {
   });
 
   it('rejects the wrong public key even with correct algorithms', async () => {
-    const wrong = getPublicKey(generateKeyPair('P-256').privateKey, 'P-256');
+    const wrong = derivePublicKey(generateKeyPair('P-256').privateKey, 'P-256');
     const result = await verifyLevel1Signature(carJaune, { publicKey: wrong, ...algorithms });
     expect(result.valid).toBe(false);
   });
@@ -521,7 +522,7 @@ describe('level 1 verification with configured algorithms', () => {
   it('fails loudly when a configured algorithm contradicts the barcode', async () => {
     const key = generateKeyPair('P-256');
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
-    const signed = signAndEncodeTicket(ticket, key);
+    const signed = await signAndEncodeTicket(ticket, { level1: localSigner(key.privateKey, key.curve) });
 
     const result = await verifyLevel1Signature(signed, {
       publicKey: key.publicKey,
@@ -541,7 +542,7 @@ describe('level 2 verification with configured algorithms', () => {
   /** Encode a signed barcode that carries a Level 2 signature but no Level 2 OIDs. */
   function encodeWithoutLevel2Oids(): { bytes: Uint8Array; publicKey: Uint8Array } {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
-    const publicKey = getPublicKey(PRIV_L2, 'P-256');
+    const publicKey = derivePublicKey(PRIV_L2, 'P-256');
     const cfg = CURVES['P-256'];
 
     const level1Raw = encodeLevel1Data(

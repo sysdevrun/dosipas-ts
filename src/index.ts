@@ -6,7 +6,7 @@ export { controlTicket } from './control.js';
 export { getIssuingTime, getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 export { extractTicket, signatureKey } from './signed-data.js';
 export { SignatureCollector, collectSignatures } from './signature-collector.js';
-export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPair, getPublicKey, CURVES } from './signer.js';
+export { signLevel1, signLevel2, signAndEncodeTicket, signPayload, generateKeyPair, derivePublicKey, localSigner, CURVES } from './signer.js';
 // The accepted values for the `keyAlg` / `signingAlg` fields on
 // Level1KeyMaterial and Level2Algorithms are the keys of these two tables.
 export { SIGNING_ALGORITHMS, KEY_ALGORITHMS, getSigningAlgorithm, getKeyAlgorithm } from './oids.js';
@@ -61,6 +61,6 @@ export type { RecoverLevel1KeyOptions } from './key-recovery.js';
 export type { SigningAlgorithm, KeyAlgorithm } from './oids.js';
 export type { ExtractedTicket, SignatureKey, LevelSignatureData } from './signed-data.js';
 export type { SignatureGroup, AddResult } from './signature-collector.js';
-export type { CurveName, CurveConfig, SigningKeyPair } from './signer.js';
+export type { CurveName, CurveConfig, SigningKeyPair, Signer } from './signer.js';
 
 export { RawBytes } from 'asn1-per-ts';

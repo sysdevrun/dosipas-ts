@@ -3,8 +3,9 @@ import {
   decodeTicket,
   encodeTicketToBytes,
   signAndEncodeTicket,
+  localSigner,
   generateKeyPair,
-  getPublicKey,
+  derivePublicKey,
   verifyLevel1Signature,
   SOLEA_TICKET_HEX,
   CTS_TICKET_HEX,
@@ -29,16 +30,19 @@ function bytesToHex(bytes: Uint8Array): string {
 function makeKeyPair(privateKey: Uint8Array, curve: 'P-256' | 'P-384' | 'P-521'): SigningKeyPair {
   return {
     privateKey,
-    publicKey: getPublicKey(privateKey, curve),
+    publicKey: derivePublicKey(privateKey, curve),
     curve,
   };
 }
 
 /** Re-sign a decoded fixture ticket with the given key pair. */
-function resign(ticketHex: string, l1Key: SigningKeyPair): Uint8Array {
+function resign(ticketHex: string, l1Key: SigningKeyPair): Promise<Uint8Array> {
   const ticket = decodeTicket(ticketHex);
   const l2Key = generateKeyPair(l1Key.curve);
-  return signAndEncodeTicket(ticket, l1Key, l2Key);
+  return signAndEncodeTicket(ticket, {
+    level1: localSigner(l1Key.privateKey, l1Key.curve),
+    level2: localSigner(l2Key.privateKey, l2Key.curve),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -61,7 +65,7 @@ describe('recoverLevel1PublicKey on real tickets', () => {
     expect((await verifyLevel1Signature(cts, key)).valid).toBe(true);
   });
 
-  it('yields the true key among the candidates from a single ticket', () => {
+  it('yields the true key among the candidates from a single ticket', async () => {
     const solea = hexToBytes(SOLEA_TICKET_HEX);
     const cts = hexToBytes(CTS_TICKET_HEX);
 
@@ -108,45 +112,45 @@ describe('recoverLevel1PublicKey on real tickets', () => {
 // ---------------------------------------------------------------------------
 
 describe('recoverLevel1PublicKey on re-signed tickets', () => {
-  it('recovers exactly the signing key from two P-256 tickets', () => {
+  it('recovers exactly the signing key from two P-256 tickets', async () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
-    const tickets = [resign(SOLEA_TICKET_HEX, l1Key), resign(CTS_TICKET_HEX, l1Key)];
+    const tickets = [await resign(SOLEA_TICKET_HEX, l1Key), await resign(CTS_TICKET_HEX, l1Key)];
 
     const candidates = recoverLevel1PublicKey(tickets);
     expect(candidates).toHaveLength(1);
     expect(bytesToHex(candidates[0])).toBe(bytesToHex(l1Key.publicKey));
   });
 
-  it.each(['P-384', 'P-521'] as const)('recovers the signing key on %s', curve => {
+  it.each(['P-384', 'P-521'] as const)('recovers the signing key on %s', async curve => {
     const l1Key = generateKeyPair(curve);
-    const tickets = [resign(SOLEA_TICKET_HEX, l1Key), resign(CTS_TICKET_HEX, l1Key)];
+    const tickets = [await resign(SOLEA_TICKET_HEX, l1Key), await resign(CTS_TICKET_HEX, l1Key)];
 
     const candidates = recoverLevel1PublicKey(tickets);
     expect(candidates).toHaveLength(1);
     expect(bytesToHex(candidates[0])).toBe(bytesToHex(l1Key.publicKey));
   });
 
-  it('includes the signing key among the candidates from a single ticket', () => {
+  it('includes the signing key among the candidates from a single ticket', async () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
-    const candidates = recoverLevel1PublicKey([resign(SOLEA_TICKET_HEX, l1Key)]);
+    const candidates = recoverLevel1PublicKey([await resign(SOLEA_TICKET_HEX, l1Key)]);
 
     expect(candidates.length).toBeGreaterThanOrEqual(1);
     expect(candidates.length).toBeLessThanOrEqual(4);
     expect(candidates.map(bytesToHex)).toContain(bytesToHex(l1Key.publicKey));
   });
 
-  it('returns an empty array for tickets signed with different keys', () => {
+  it('returns an empty array for tickets signed with different keys', async () => {
     const keyA = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const keyB = makeKeyPair(FIPS_L2_PRIV, 'P-256');
-    const tickets = [resign(SOLEA_TICKET_HEX, keyA), resign(CTS_TICKET_HEX, keyB)];
+    const tickets = [await resign(SOLEA_TICKET_HEX, keyA), await resign(CTS_TICKET_HEX, keyB)];
 
     expect(recoverLevel1PublicKey(tickets)).toEqual([]);
   });
 
-  it('narrows but never drops the true key as tickets are added', () => {
+  it('narrows but never drops the true key as tickets are added', async () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
-    const t1 = resign(SOLEA_TICKET_HEX, l1Key);
-    const t2 = resign(CTS_TICKET_HEX, l1Key);
+    const t1 = await resign(SOLEA_TICKET_HEX, l1Key);
+    const t2 = await resign(CTS_TICKET_HEX, l1Key);
 
     const one = recoverLevel1PublicKey([t1]).map(bytesToHex);
     const two = recoverLevel1PublicKey([t1, t2]).map(bytesToHex);
@@ -163,18 +167,18 @@ describe('recoverLevel1PublicKey on re-signed tickets', () => {
 // ---------------------------------------------------------------------------
 
 describe('recoverLevel1PublicKey errors', () => {
-  it('rejects an empty ticket list', () => {
+  it('rejects an empty ticket list', async () => {
     expect(() => recoverLevel1PublicKey([])).toThrow('At least one ticket');
   });
 
-  it('rejects a barcode without OIDs when none are configured', () => {
+  it('rejects a barcode without OIDs when none are configured', async () => {
     const carJaune = hexToBytes(CAR_JAUNE_TICKET_HEX);
     expect(() => recoverLevel1PublicKey([carJaune])).toThrow(
       /Ticket #0: Missing level 1 signing algorithm/,
     );
   });
 
-  it('rejects non-ECDSA level 1 signatures', () => {
+  it('rejects non-ECDSA level 1 signatures', async () => {
     // The SNCF TER ticket's level 1 signature is DSA (OID shared out of band,
     // like the rest of its algorithm metadata).
     const ter = hexToBytes(SNCF_TER_TICKET_HEX);
@@ -183,27 +187,27 @@ describe('recoverLevel1PublicKey errors', () => {
     ).toThrow(/Ticket #0: public key recovery requires ECDSA.*DSA/);
   });
 
-  it('rejects tickets that resolve to different curves', () => {
-    const t256 = resign(SOLEA_TICKET_HEX, makeKeyPair(FIPS_L1_PRIV, 'P-256'));
-    const t384 = resign(CTS_TICKET_HEX, generateKeyPair('P-384'));
+  it('rejects tickets that resolve to different curves', async () => {
+    const t256 = await resign(SOLEA_TICKET_HEX, makeKeyPair(FIPS_L1_PRIV, 'P-256'));
+    const t384 = await resign(CTS_TICKET_HEX, generateKeyPair('P-384'));
 
     expect(() => recoverLevel1PublicKey([t256, t384])).toThrow(
       /Ticket #1: .*P-384.*ticket #0.*P-256/,
     );
   });
 
-  it('rejects a mismatch between the barcode OIDs and the configured ones', () => {
+  it('rejects a mismatch between the barcode OIDs and the configured ones', async () => {
     const solea = hexToBytes(SOLEA_TICKET_HEX);
     expect(() =>
       recoverLevel1PublicKey([solea], { keyAlg: '1.3.132.0.34' /* P-384 */ }),
     ).toThrow(/Ticket #0: .*mismatch/);
   });
 
-  it('rejects undecodable ticket bytes with the ticket index', () => {
+  it('rejects undecodable ticket bytes with the ticket index', async () => {
     expect(() => recoverLevel1PublicKey([new Uint8Array([1, 2, 3])])).toThrow(/Ticket #0:/);
   });
 
-  it('rejects a ticket without a level 1 signature', () => {
+  it('rejects a ticket without a level 1 signature', async () => {
     // Re-encode Soléa with its level 1 signature stripped.
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const noSig: UicBarcodeTicket = {
