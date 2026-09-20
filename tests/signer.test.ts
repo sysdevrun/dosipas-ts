@@ -8,6 +8,7 @@ import {
   signLevel1,
   signLevel2,
   signAndEncodeTicket,
+  localSigner,
   signPayload,
   encodeLevel2Data,
   encodeLevel1Data,
@@ -15,12 +16,12 @@ import {
   encodeUicBarcode,
   extractTicket,
   generateKeyPair,
-  getPublicKey,
+  derivePublicKey,
   verifyLevel1Signature,
   verifyLevel2Signature,
   CURVES,
 } from '../src';
-import type { UicBarcodeTicket, SigningKeyPair } from '../src';
+import type { UicBarcodeTicket, SigningKeyPair, Signer } from '../src';
 
 /** NIST FIPS 186-4 ECDSA P-256 test vector private keys. */
 const FIPS_L1_PRIV = hexToBytes('c9806898a0334916c860748880a541f093b579a9b1f32934d86c363c39800357');
@@ -37,8 +38,16 @@ function bytesToHex(bytes: Uint8Array): string {
 function makeKeyPair(privateKey: Uint8Array, curve: 'P-256' | 'P-384' | 'P-521'): SigningKeyPair {
   return {
     privateKey,
-    publicKey: getPublicKey(privateKey, curve),
+    publicKey: derivePublicKey(privateKey, curve),
     curve,
+  };
+}
+
+/** Signer set for signAndEncodeTicket from raw key pairs. */
+function signers(l1Key: SigningKeyPair, l2Key?: SigningKeyPair) {
+  return {
+    level1: localSigner(l1Key.privateKey, l1Key.curve),
+    ...(l2Key ? { level2: localSigner(l2Key.privateKey, l2Key.curve) } : {}),
   };
 }
 
@@ -47,9 +56,9 @@ function makeKeyPair(privateKey: Uint8Array, curve: 'P-256' | 'P-384' | 'P-521')
 // ---------------------------------------------------------------------------
 
 describe('signLevel1', () => {
-  it('produces a DER signature for Solea ticket data', () => {
+  it('produces a DER signature for Solea ticket data', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
-    const sig = signLevel1(ticket, FIPS_L1_PRIV, 'P-256');
+    const sig = await signLevel1(ticket, localSigner(FIPS_L1_PRIV, 'P-256'));
 
     expect(sig).toBeInstanceOf(Uint8Array);
     expect(sig.length).toBeGreaterThan(0);
@@ -59,27 +68,27 @@ describe('signLevel1', () => {
 });
 
 describe('signLevel2', () => {
-  it('requires level1Signature to be set', () => {
+  it('requires level1Signature to be set', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     // Clear level1Signature
     const noSig: UicBarcodeTicket = {
       ...ticket,
       level2SignedData: { ...ticket.level2SignedData, level1Signature: undefined },
     };
-    expect(() => signLevel2(noSig, FIPS_L2_PRIV, 'P-256')).toThrow(
+    await expect(signLevel2(noSig, localSigner(FIPS_L2_PRIV, 'P-256'))).rejects.toThrow(
       'Level 1 signature must be set',
     );
   });
 
-  it('produces a DER signature when L1 is set', () => {
+  it('produces a DER signature when L1 is set', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
-    const l1Sig = signLevel1(ticket, FIPS_L1_PRIV, 'P-256');
+    const l1Sig = await signLevel1(ticket, localSigner(FIPS_L1_PRIV, 'P-256'));
 
     const ticketWithL1: UicBarcodeTicket = {
       ...ticket,
       level2SignedData: { ...ticket.level2SignedData, level1Signature: l1Sig },
     };
-    const l2Sig = signLevel2(ticketWithL1, FIPS_L2_PRIV, 'P-256');
+    const l2Sig = await signLevel2(ticketWithL1, localSigner(FIPS_L2_PRIV, 'P-256'));
 
     expect(l2Sig).toBeInstanceOf(Uint8Array);
     expect(l2Sig[0]).toBe(0x30);
@@ -87,17 +96,17 @@ describe('signLevel2', () => {
 });
 
 describe('signAndEncodeTicket', () => {
-  it('encodes a signed ticket from Solea data', () => {
+  it('encodes a signed ticket from Solea data', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const bytes = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const bytes = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(100);
   });
 
-  it('works without Level 2 key (static barcode)', () => {
+  it('works without Level 2 key (static barcode)', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     // Remove level2Data for static mode
     const staticTicket: UicBarcodeTicket = {
@@ -106,20 +115,20 @@ describe('signAndEncodeTicket', () => {
     };
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
 
-    const bytes = signAndEncodeTicket(staticTicket, l1Key);
+    const bytes = await signAndEncodeTicket(staticTicket, signers(l1Key));
     expect(bytes).toBeInstanceOf(Uint8Array);
     expect(bytes.length).toBeGreaterThan(100);
   });
 });
 
 describe('decode -> re-encode -> decode round-trip', () => {
-  it('Solea ticket round-trips through encode/decode', () => {
+  it('Solea ticket round-trips through encode/decode', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
     // Encode with new signatures
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
 
     // Decode the re-encoded ticket
     const decoded = decodeTicketFromBytes(encoded);
@@ -144,12 +153,12 @@ describe('decode -> re-encode -> decode round-trip', () => {
     expect(l2Data!.decoded).toBeDefined();
   });
 
-  it('CTS ticket round-trips through encode/decode', () => {
+  it('CTS ticket round-trips through encode/decode', async () => {
     const ticket = decodeTicket(CTS_TICKET_HEX);
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
     const decoded = decodeTicketFromBytes(encoded);
 
     expect(decoded.format).toBe('U2');
@@ -157,12 +166,12 @@ describe('decode -> re-encode -> decode round-trip', () => {
     expect(decoded.level2SignedData.level1Data.dataSequence[0].decoded!.issuingDetail!.intercodeIssuing).toBeDefined();
   });
 
-  it('Sample ticket round-trips through encode/decode', () => {
+  it('Sample ticket round-trips through encode/decode', async () => {
     const ticket = decodeTicket(SAMPLE_TICKET_HEX);
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
     const decoded = decodeTicketFromBytes(encoded);
 
     expect(decoded.level2SignedData.level1Data.dataSequence).toHaveLength(1);
@@ -178,7 +187,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
     const result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
 
     expect(result.valid).toBe(true);
@@ -190,7 +199,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
     const result = await verifyLevel2Signature(encoded);
 
     expect(result.valid).toBe(true);
@@ -202,7 +211,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
     const l2Key = makeKeyPair(FIPS_L2_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
 
     const l1Result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
     const l2Result = await verifyLevel2Signature(encoded);
@@ -219,7 +228,7 @@ describe('signature verification on re-encoded tickets', () => {
     };
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
 
-    const encoded = signAndEncodeTicket(staticTicket, l1Key);
+    const encoded = await signAndEncodeTicket(staticTicket, signers(l1Key));
     const result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
 
     expect(result.valid).toBe(true);
@@ -230,7 +239,7 @@ describe('signature verification on re-encoded tickets', () => {
     const l1Key = generateKeyPair('P-384');
     const l2Key = generateKeyPair('P-384');
 
-    const encoded = signAndEncodeTicket(ticket, l1Key, l2Key);
+    const encoded = await signAndEncodeTicket(ticket, signers(l1Key, l2Key));
 
     const l1Result = await verifyLevel1Signature(encoded, { publicKey: l1Key.publicKey });
     const l2Result = await verifyLevel2Signature(encoded);
@@ -245,7 +254,7 @@ describe('signature verification on re-encoded tickets', () => {
 // ---------------------------------------------------------------------------
 
 describe('signPayload', () => {
-  it('produces a DER signature for arbitrary data', () => {
+  it('produces a DER signature for arbitrary data', async () => {
     const data = new Uint8Array([1, 2, 3, 4, 5]);
     const sig = signPayload(data, FIPS_L1_PRIV, 'P-256');
 
@@ -255,7 +264,7 @@ describe('signPayload', () => {
 });
 
 describe('encodeLevel1Data', () => {
-  it('produces bytes matching extractTicket for Solea ticket', () => {
+  it('produces bytes matching extractTicket for Solea ticket', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const l1 = ticket.level2SignedData.level1Data;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
@@ -275,7 +284,7 @@ describe('encodeLevel1Data', () => {
         level1Data: { ...l1, level1KeyAlg: l1Curve.keyAlgOid, level1SigningAlg: l1Curve.sigAlgOid },
       },
     };
-    const l1Sig = signLevel1(withOids, l1Key.privateKey, 'P-256');
+    const l1Sig = await signLevel1(withOids, localSigner(l1Key.privateKey, 'P-256'));
     const fullBytes = encodeTicketToBytes({
       ...withOids,
       level2SignedData: { ...withOids.level2SignedData, level1Signature: l1Sig },
@@ -286,7 +295,7 @@ describe('encodeLevel1Data', () => {
     expect(level1Raw.data).toEqual(extracted.level1.signedBytes);
   });
 
-  it('produces bytes matching extractTicket for CTS ticket', () => {
+  it('produces bytes matching extractTicket for CTS ticket', async () => {
     const ticket = decodeTicket(CTS_TICKET_HEX);
     const l1 = ticket.level2SignedData.level1Data;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
@@ -304,7 +313,7 @@ describe('encodeLevel1Data', () => {
         level1Data: { ...l1, level1KeyAlg: l1Curve.keyAlgOid, level1SigningAlg: l1Curve.sigAlgOid },
       },
     };
-    const l1Sig = signLevel1(withOids, l1Key.privateKey, 'P-256');
+    const l1Sig = await signLevel1(withOids, localSigner(l1Key.privateKey, 'P-256'));
     const fullBytes = encodeTicketToBytes({
       ...withOids,
       level2SignedData: { ...withOids.level2SignedData, level1Signature: l1Sig },
@@ -471,5 +480,101 @@ describe('composable flow end-to-end', () => {
 
     const l1Result = await verifyLevel1Signature(barcode, { publicKey: l1Key.publicKey });
     expect(l1Result.valid).toBe(true);
+  });
+});
+
+describe('algorithm OID policy', () => {
+  it('signLevel1 rejects a ticket whose OIDs contradict the signer curve', async () => {
+    const ticket = decodeTicket(SOLEA_TICKET_HEX); // carries P-256 OIDs
+    await expect(signLevel1(ticket, localSigner(FIPS_L1_PRIV, 'P-384'))).rejects.toThrow(
+      /level1KeyAlg.*P-384/,
+    );
+  });
+
+  it('signLevel2 rejects a ticket whose Level 2 OIDs contradict the signer curve', async () => {
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const withL1: UicBarcodeTicket = {
+      ...ticket,
+      level2SignedData: { ...ticket.level2SignedData, level1Signature: new Uint8Array(70) },
+    };
+    await expect(signLevel2(withL1, localSigner(FIPS_L2_PRIV, 'P-521'))).rejects.toThrow(
+      /level2KeyAlg.*P-521/,
+    );
+  });
+
+  it('signLevel1 signs a barcode that omits its OIDs (out-of-band algorithms)', async () => {
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const bare: UicBarcodeTicket = {
+      ...ticket,
+      level2SignedData: {
+        ...ticket.level2SignedData,
+        level2Data: undefined,
+        level1Data: {
+          ...ticket.level2SignedData.level1Data,
+          level1KeyAlg: undefined,
+          level1SigningAlg: undefined,
+          level2KeyAlg: undefined,
+          level2SigningAlg: undefined,
+          level2PublicKey: undefined,
+        },
+      },
+    };
+
+    const sig = await signLevel1(bare, localSigner(FIPS_L1_PRIV, 'P-256'));
+    const bytes = encodeTicketToBytes({
+      ...bare,
+      level2SignedData: { ...bare.level2SignedData, level1Signature: sig },
+      level2Signature: undefined,
+    });
+
+    // The encoded barcode really carries no Level 1 OIDs...
+    const extracted = extractTicket(bytes);
+    expect(extracted.level1.keyAlg).toBeUndefined();
+    expect(extracted.level1.signingAlg).toBeUndefined();
+
+    // ...and verifies with the out-of-band algorithms supplied.
+    const result = await verifyLevel1Signature(bytes, {
+      publicKey: derivePublicKey(FIPS_L1_PRIV, 'P-256'),
+      keyAlg: CURVES['P-256'].keyAlgOid,
+      signingAlg: CURVES['P-256'].sigAlgOid,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.algorithmSource).toBe('configured');
+  });
+});
+
+describe('Signer interface', () => {
+  it('signAndEncodeTicket requires the Level 2 signer to expose getPublicKey', async () => {
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const keyless: Signer = {
+      curve: 'P-256',
+      sign: async (data) => signPayload(data, FIPS_L2_PRIV, 'P-256'),
+    };
+    await expect(
+      signAndEncodeTicket(ticket, { level1: localSigner(FIPS_L1_PRIV, 'P-256'), level2: keyless }),
+    ).rejects.toThrow('getPublicKey');
+  });
+
+  it('a custom Signer works end-to-end (HSM-style wrapper)', async () => {
+    // A signer that never hands the raw private key to the library, as an
+    // HSM/KMS/WebCrypto wrapper would.
+    const hsmStyle = (privateKey: Uint8Array): Signer => ({
+      curve: 'P-256',
+      sign: async (data) => signPayload(data, privateKey, 'P-256'),
+      getPublicKey: async () => derivePublicKey(privateKey, 'P-256'),
+    });
+
+    const ticket = decodeTicket(SOLEA_TICKET_HEX);
+    const encoded = await signAndEncodeTicket(ticket, {
+      level1: hsmStyle(FIPS_L1_PRIV),
+      level2: hsmStyle(FIPS_L2_PRIV),
+    });
+
+    const l1 = await verifyLevel1Signature(encoded, {
+      publicKey: derivePublicKey(FIPS_L1_PRIV, 'P-256'),
+    });
+    const l2 = await verifyLevel2Signature(encoded);
+    expect(l1.valid).toBe(true);
+    expect(l2.valid).toBe(true);
   });
 });

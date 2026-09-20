@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   signLevel1,
   signAndEncodeTicket,
+  localSigner,
   encodeTicketToBytes,
   controlTicket,
-  getPublicKey,
+  derivePublicKey,
   CURVES,
 } from '../src/index';
 import type { UicBarcodeTicket, Level1KeyProvider } from '../src/index';
@@ -59,7 +60,7 @@ describe('encode → sign → control round-trip', () => {
     ticket.level2SignedData.level1Data.level1KeyAlg = CURVES['P-256'].keyAlgOid;
     ticket.level2SignedData.level1Data.level1SigningAlg = CURVES['P-256'].sigAlgOid;
 
-    const l1Sig = signLevel1(ticket, hexToBytes(FIPS_KEY_1), 'P-256');
+    const l1Sig = await signLevel1(ticket, localSigner(hexToBytes(FIPS_KEY_1), 'P-256'));
     const withSig: UicBarcodeTicket = {
       ...ticket,
       level2SignedData: {
@@ -69,7 +70,7 @@ describe('encode → sign → control round-trip', () => {
     };
     const hex = bytesToHex(encodeTicketToBytes(withSig));
 
-    const pubKey = getPublicKey(hexToBytes(FIPS_KEY_1), 'P-256');
+    const pubKey = derivePublicKey(hexToBytes(FIPS_KEY_1), 'P-256');
     const provider: Level1KeyProvider = {
       async getPublicKey() { return { publicKey: pubKey }; },
     };
@@ -83,11 +84,11 @@ describe('encode → sign → control round-trip', () => {
 
     const l1Key = {
       privateKey: hexToBytes(FIPS_KEY_1),
-      publicKey: getPublicKey(hexToBytes(FIPS_KEY_1), 'P-256'),
+      publicKey: derivePublicKey(hexToBytes(FIPS_KEY_1), 'P-256'),
       curve: 'P-256' as const,
     };
 
-    const hex = bytesToHex(signAndEncodeTicket(ticket, l1Key));
+    const hex = bytesToHex(await signAndEncodeTicket(ticket, { level1: localSigner(l1Key.privateKey, l1Key.curve) }));
 
     const provider: Level1KeyProvider = {
       async getPublicKey() { return { publicKey: l1Key.publicKey }; },

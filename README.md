@@ -143,10 +143,23 @@ const bytes = encodeTicketToBytes(ticket);
 
 ## Signing
 
-Sign tickets with ECDSA using the two-pass signing flow (Level 1, then Level 2):
+Signing goes through the `Signer` interface — the signing-side counterpart of
+`Level1KeyProvider`. A signer wraps wherever the private key actually lives:
+`localSigner(privateKey, curve)` for a raw key in memory, or your own wrapper
+over WebCrypto (non-extractable keys), an HSM or a cloud KMS:
 
 ```ts
-import { signAndEncodeTicket, generateKeyPair } from 'dosipas-ts';
+interface Signer {
+  curve: CurveName;                             // decides the OIDs and the hash
+  sign(data: Uint8Array): Promise<Uint8Array>;  // DER-encoded ECDSA signature
+  getPublicKey?(): Promise<Uint8Array>;         // required for Level 2 signers
+}
+```
+
+Sign tickets with the two-level flow (Level 1, then Level 2):
+
+```ts
+import { signAndEncodeTicket, generateKeyPair, localSigner } from 'dosipas-ts';
 import type { UicBarcodeTicket } from 'dosipas-ts';
 
 const level1Key = generateKeyPair('P-256');
@@ -178,25 +191,39 @@ const ticket: UicBarcodeTicket = {
   },
 };
 
-const ticketBytes = signAndEncodeTicket(
-  ticket,
-  level1Key,
-  level2Key, // omit for static barcodes (Level 1 only)
-);
+const ticketBytes = await signAndEncodeTicket(ticket, {
+  level1: localSigner(level1Key.privateKey, 'P-256'),
+  level2: localSigner(level2Key.privateKey, 'P-256'), // omit for static barcodes
+});
 ```
 
-For finer control, sign each level independently:
+`signAndEncodeTicket` treats the signers as authoritative: the algorithm OIDs
+(and the Level 2 public key) are written into the header from the signers,
+whatever the input ticket carried, so its output is always self-consistent.
+
+For finer control, sign each level independently. The low-level functions
+sign the ticket's data **exactly as given** — an OID on the ticket that
+contradicts the signer's curve is an error, and absent OIDs stay absent
+(that is how barcodes whose algorithms are shared out of band are produced):
 
 ```ts
-import { signLevel1, signLevel2 } from 'dosipas-ts';
+import { signLevel1, signLevel2, localSigner } from 'dosipas-ts';
 
-const level1Sig = signLevel1(ticket, privateKey, 'P-256');
-const level2Sig = signLevel2(
+const signer1 = localSigner(privateKey, 'P-256');
+const signer2 = localSigner(level2PrivateKey, 'P-256');
+
+const level1Sig = await signLevel1(ticket, signer1);
+const level2Sig = await signLevel2(
   { ...ticket, level2SignedData: { ...ticket.level2SignedData, level1Signature: level1Sig } },
-  level2PrivateKey,
-  'P-256',
+  signer2,
 );
 ```
+
+Key utilities: `generateKeyPair(curve)` makes a random key pair,
+`derivePublicKey(privateKey, curve)` derives the uncompressed public point,
+and `signPayload(data, privateKey, curve)` is the synchronous raw-key
+signing primitive that `localSigner` wraps (used by the fully composable
+flow below).
 
 For a fully composable encoding flow using the low-level primitives (`encodeLevel1Data`, `encodeLevel2SignedData`, `encodeUicBarcode`), see [`examples/encoder.ts`](examples/encoder.ts).
 
@@ -348,7 +375,8 @@ Perform comprehensive validation of a ticket in a single call:
 ```ts
 import { controlTicket } from 'dosipas-ts';
 
-const result = await controlTicket(hexPayload, {
+// Accepts a hex string or raw bytes
+const result = await controlTicket(payload, {
   level1KeyProvider: provider,
   expectedIntercodeNetworkIds: new Set(['250502']),
 });
@@ -378,6 +406,10 @@ getIssuingTime(ticket)         // Date from issuingYear + issuingDay + issuingTi
 getEndOfValidityTime(ticket)   // Date from v2 endOfValidity fields or v1 issuing + duration
 getDynamicContentTime(ticket)  // Date from FDC1 timestamp or Intercode ID1 dynamic fields
 ```
+
+For open tickets, `getOpenTicketValidityWindow(openTicket, issuingDetail)`
+computes the `{ validFrom, validUntil }` window from the relative
+day/time/UTC-offset fields.
 
 ## Extracting signatures and signed data
 
@@ -414,7 +446,7 @@ expected input in a camera loop, so `add` reports them as a result instead of
 throwing:
 
 ```ts
-import { SignatureCollector } from 'dosipas-ts';
+import { SignatureCollector, signatureKey } from 'dosipas-ts';
 
 const collector = new SignatureCollector();
 
@@ -432,7 +464,8 @@ for (const group of collector.groups()) {
   group.tickets // ExtractedTicket[] — full records, in scan order
 }
 
-collector.group('3703/7') // lookup by id label (or by SignatureKey)
+collector.group('3703/7') // lookup by id label...
+collector.group(signatureKey({ securityProviderIA5: 'IWN8', keyId: 1 })) // ...or by key
 ```
 
 For a batch already in hand, `collectSignatures(payloads)` does the same in
@@ -500,7 +533,8 @@ import { SNCF_TER_SIGNATURES, SOLEA_SIGNATURES, CTS_SIGNATURES, CAR_JAUNE_SIGNAT
 | RSA with SHA-256 | No | Detected only |
 
 The OIDs for these live in `SIGNING_ALGORITHMS` and `KEY_ALGORITHMS`
-(`src/oids.ts`), exported from the package. Those tables are the accepted
+(`src/oids.ts`), exported from the package, with `getSigningAlgorithm(oid)` /
+`getKeyAlgorithm(oid)` for single lookups. Those tables are the accepted
 values for the `keyAlg` / `signingAlg` fields described above; note that the
 DSA and RSA entries are recognised for reporting but never verify.
 

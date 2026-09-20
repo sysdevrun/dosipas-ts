@@ -5,6 +5,7 @@ import {
   getDynamicContentTime,
   getOpenTicketValidityWindow,
   signAndEncodeTicket,
+  localSigner,
   generateKeyPair,
   SAMPLE_TICKET_HEX,
   SOLEA_TICKET_HEX,
@@ -74,7 +75,7 @@ function makeTicket(opts: {
 // ---------------------------------------------------------------------------
 
 describe('getIssuingTime', () => {
-  it('computes issuing time from SAMPLE_TICKET_HEX', () => {
+  it('computes issuing time from SAMPLE_TICKET_HEX', async () => {
     const ticket = decodeTicket(SAMPLE_TICKET_HEX);
     const time = getIssuingTime(ticket);
     expect(time).toBeDefined();
@@ -83,20 +84,20 @@ describe('getIssuingTime', () => {
     expect(time!.toISOString()).toBe('2020-04-30T16:35:00.000Z');
   });
 
-  it('computes issuing time from SOLEA_TICKET_HEX', () => {
+  it('computes issuing time from SOLEA_TICKET_HEX', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const time = getIssuingTime(ticket);
     expect(time).toBeDefined();
     expect(time!.getUTCFullYear()).toBeGreaterThanOrEqual(2020);
   });
 
-  it('returns undefined when no rail ticket is decoded', () => {
+  it('returns undefined when no rail ticket is decoded', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
       issuingDay: 100,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const hex = bytesToHex(encoded);
     const decoded = decodeTicket(hex);
     const time = getIssuingTime(decoded);
@@ -106,14 +107,14 @@ describe('getIssuingTime', () => {
     expect(time!.toISOString()).toBe('2025-04-10T00:00:00.000Z');
   });
 
-  it('handles issuingTime=0 (midnight)', () => {
+  it('handles issuingTime=0 (midnight)', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
       issuingDay: 1,
       issuingTime: 0,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getIssuingTime(decoded);
     expect(time).toBeDefined();
@@ -126,7 +127,7 @@ describe('getIssuingTime', () => {
 // ---------------------------------------------------------------------------
 
 describe('getEndOfValidityTime', () => {
-  it('computes v2 end-of-validity from encoded ticket', () => {
+  it('computes v2 end-of-validity from encoded ticket', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
@@ -136,7 +137,7 @@ describe('getEndOfValidityTime', () => {
       endOfValidityTime: 720, // 12:00 noon in minutes
       validityDuration: 3600, // 3600 seconds = 1 hour
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getEndOfValidityTime(decoded);
     expect(time).toBeDefined();
@@ -144,7 +145,7 @@ describe('getEndOfValidityTime', () => {
     expect(time!.toISOString()).toBe('2025-07-19T12:00:00.000Z');
   });
 
-  it('returns undefined when only validityDuration is present (no endOfValidity fields)', () => {
+  it('returns undefined when only validityDuration is present (no endOfValidity fields)', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
@@ -152,26 +153,26 @@ describe('getEndOfValidityTime', () => {
       issuingTime: 60, // 1:00 AM
       validityDuration: 600, // 600 seconds — level2 dynamic duration, not used here
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getEndOfValidityTime(decoded);
     // validityDuration alone does not produce an end-of-validity
     expect(time).toBeUndefined();
   });
 
-  it('returns undefined when no validity duration and no end-of-validity fields', () => {
+  it('returns undefined when no validity duration and no end-of-validity fields', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
       issuingDay: 1,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getEndOfValidityTime(decoded);
     expect(time).toBeUndefined();
   });
 
-  it('computes from real Solea ticket (v2 header)', () => {
+  it('computes from real Solea ticket (v2 header)', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const time = getEndOfValidityTime(ticket);
     // Solea has v2 header with end-of-validity fields
@@ -185,7 +186,7 @@ describe('getEndOfValidityTime', () => {
 // ---------------------------------------------------------------------------
 
 describe('getDynamicContentTime', () => {
-  it('computes Intercode dynamic content time from SAMPLE_TICKET_HEX', () => {
+  it('computes Intercode dynamic content time from SAMPLE_TICKET_HEX', async () => {
     const ticket = decodeTicket(SAMPLE_TICKET_HEX);
     const time = getDynamicContentTime(ticket);
     expect(time).toBeDefined();
@@ -196,7 +197,7 @@ describe('getDynamicContentTime', () => {
     expect(time!.toISOString()).toBe('2020-04-30T14:35:10.000Z');
   });
 
-  it('computes FDC1 dynamic content time from SOLEA_TICKET_HEX', () => {
+  it('computes FDC1 dynamic content time from SOLEA_TICKET_HEX', async () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const time = getDynamicContentTime(ticket);
     // SOLEA has FDC1 with dynamicContentTimeStamp
@@ -206,7 +207,7 @@ describe('getDynamicContentTime', () => {
     }
   });
 
-  it('computes FDC1 dynamic content time from CTS_TICKET_HEX', () => {
+  it('computes FDC1 dynamic content time from CTS_TICKET_HEX', async () => {
     const ticket = decodeTicket(CTS_TICKET_HEX);
     const time = getDynamicContentTime(ticket);
     if (time) {
@@ -214,19 +215,19 @@ describe('getDynamicContentTime', () => {
     }
   });
 
-  it('returns undefined when no level2Data present', () => {
+  it('returns undefined when no level2Data present', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
       issuingDay: 1,
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getDynamicContentTime(decoded);
     expect(time).toBeUndefined();
   });
 
-  it('computes FDC1 time from encoded ticket with dynamicContentTimeStamp', () => {
+  it('computes FDC1 time from encoded ticket with dynamicContentTimeStamp', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
@@ -241,7 +242,7 @@ describe('getDynamicContentTime', () => {
         },
       },
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getDynamicContentTime(decoded);
     expect(time).toBeDefined();
@@ -249,7 +250,7 @@ describe('getDynamicContentTime', () => {
     expect(time!.toISOString()).toBe('2025-02-19T12:00:00.000Z');
   });
 
-  it('computes Intercode time from encoded ticket with dynamic data', () => {
+  it('computes Intercode time from encoded ticket with dynamic data', async () => {
     const keys = generateKeyPair('P-256');
     const ticket = makeTicket({
       issuingYear: 2025,
@@ -263,7 +264,7 @@ describe('getDynamicContentTime', () => {
         },
       },
     });
-    const encoded = signAndEncodeTicket(ticket, keys);
+    const encoded = await signAndEncodeTicket(ticket, { level1: localSigner(keys.privateKey, keys.curve) });
     const decoded = decodeTicket(bytesToHex(encoded));
     const time = getDynamicContentTime(decoded);
     expect(time).toBeDefined();
@@ -288,7 +289,7 @@ describe('getOpenTicketValidityWindow', () => {
     activated: true,
   };
 
-  it('computes same-day ticket with explicit times', () => {
+  it('computes same-day ticket with explicit times', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: 0,
@@ -303,7 +304,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-15T12:00:00.000Z');
   });
 
-  it('computes multi-day ticket with default times (absent → 00:00 / 23:59)', () => {
+  it('computes multi-day ticket with default times (absent → 00:00 / 23:59)', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: 1,
@@ -318,7 +319,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-18T23:59:00.000Z');
   });
 
-  it('applies validFromUTCOffset correctly', () => {
+  it('applies validFromUTCOffset correctly', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: 0,
@@ -335,7 +336,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-15T11:00:00.000Z');
   });
 
-  it('defaults all fields when absent', () => {
+  it('defaults all fields when absent', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       // All time fields absent → validFromDay=0, validFromTime=0, validUntilDay=0, validUntilTime=1439
@@ -347,7 +348,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-15T23:59:00.000Z');
   });
 
-  it('validUntilUTCOffset falls back to validFromUTCOffset', () => {
+  it('validUntilUTCOffset falls back to validFromUTCOffset', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: 0,
@@ -364,7 +365,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-15T11:00:00.000Z');
   });
 
-  it('handles negative validFromDay (day before issuing)', () => {
+  it('handles negative validFromDay (day before issuing)', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: -1,
@@ -380,7 +381,7 @@ describe('getOpenTicketValidityWindow', () => {
     expect(w!.validUntil.toISOString()).toBe('2025-01-14T23:59:00.000Z');
   });
 
-  it('uses distinct validUntilUTCOffset when provided', () => {
+  it('uses distinct validUntilUTCOffset when provided', async () => {
     const ot: OpenTicketData = {
       returnIncluded: false,
       validFromDay: 0,
