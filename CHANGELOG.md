@@ -49,6 +49,12 @@
   placeholder signatures (three encodes down to one); they are built on the
   same composable primitives as `signAndEncodeTicket`.
 
+- **`controlTicket` accepts raw bytes as well as hex** —
+  `controlTicket(input: string | Uint8Array, options?)`. It was the last
+  hex-only entry point; a scanner pipeline can now pass its payload bytes
+  straight through, consistently with the verify/extract/collect APIs.
+  Hex strings keep working unchanged.
+
 ### Migrating from 3.0.0
 
 Only the signing API changed; decoding, encoding primitives (`signPayload`

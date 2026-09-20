@@ -96,6 +96,25 @@ describe('controlTicket — decode failure', () => {
   });
 });
 
+describe('controlTicket — raw bytes input', () => {
+  it('produces the same result as the hex form', async () => {
+    const bytes = new Uint8Array(
+      SAMPLE_TICKET_HEX.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
+    );
+    const fromBytes = await controlTicket(bytes);
+    const fromHex = await controlTicket(SAMPLE_TICKET_HEX);
+    expect(fromBytes.checks.decode.passed).toBe(true);
+    expect(Object.keys(fromBytes.checks)).toEqual(Object.keys(fromHex.checks));
+    expect(fromBytes.valid).toBe(fromHex.valid);
+  });
+
+  it('returns failed decode check for garbage bytes', async () => {
+    const result = await controlTicket(new Uint8Array([1, 2, 3]));
+    expect(result.valid).toBe(false);
+    expect(result.checks.decode.passed).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 2. SAMPLE_TICKET_HEX — U1, FCB2, Intercode 6, _3703.ID1
 // ---------------------------------------------------------------------------

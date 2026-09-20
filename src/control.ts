@@ -5,7 +5,7 @@
  * and running a series of focused check functions — each responsible for
  * verifying one specific aspect of the ticket.
  */
-import { decodeTicket } from './decoder.js';
+import { decodeTicket, decodeTicketFromBytes } from './decoder.js';
 import { verifySignatures } from './verifier.js';
 import { getEndOfValidityTime, getDynamicContentTime, getOpenTicketValidityWindow } from './time-helpers.js';
 import type {
@@ -616,17 +616,17 @@ function checkOpenTicketValidity(
 /**
  * Perform comprehensive validation of a dosipas ticket.
  *
- * Decodes the ticket from hex, then runs a series of check functions covering
+ * Decodes the ticket, then runs a series of check functions covering
  * header format, security metadata, signatures, expiry, specimen/activated
  * flags, issuing details, transport documents, Intercode extensions, and
  * dynamic content freshness.
  *
- * @param hex - Hex-encoded barcode payload.
+ * @param input - Barcode payload, as a hex string or raw bytes.
  * @param options - Control options (reference time, key provider, expected networks).
  * @returns Aggregated control result with individual check results.
  */
 export async function controlTicket(
-  hex: string,
+  input: string | Uint8Array,
   options?: ControlOptions,
 ): Promise<ControlResult> {
   const checks: Record<string, CheckResult> = {};
@@ -636,7 +636,7 @@ export async function controlTicket(
   // 1. Decode
   let ticket: UicBarcodeTicket;
   try {
-    ticket = decodeTicket(hex);
+    ticket = typeof input === 'string' ? decodeTicket(input) : decodeTicketFromBytes(input);
     checks.decode = {
       name: 'Decode',
       passed: true,
@@ -652,8 +652,8 @@ export async function controlTicket(
     return { valid: false, checks };
   }
 
-  // Convert hex to bytes for signature verification
-  const bytes = hexToBytes(hex);
+  // Bytes for signature verification
+  const bytes = typeof input === 'string' ? hexToBytes(input) : input;
 
   // 2. Header
   checks.header = checkHeader(ticket);
