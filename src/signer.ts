@@ -13,7 +13,7 @@
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 
 import { encodeLevel1Data, encodeLevel2Data, encodeLevel2SignedData, encodeUicBarcode, encodeTicketToBytes } from './encoder.js';
-import { extractSignedData } from './signed-data.js';
+import { extractTicket } from './signed-data.js';
 import { rawToDer } from './signature-utils.js';
 import type { RawBytes } from 'asn1-per-ts';
 import type { UicBarcodeTicket, Level1Data } from './types.js';
@@ -196,8 +196,8 @@ export function signLevel1(
   };
 
   const bytes = encodeTicketToBytes(prepared);
-  const extracted = extractSignedData(bytes);
-  return ecSign(extracted.level1DataBytes, privateKey, curve);
+  const extracted = extractTicket(bytes);
+  return ecSign(extracted.level1.signedBytes, privateKey, curve);
 }
 
 /**
@@ -239,8 +239,8 @@ export function signLevel2(
   };
 
   const bytes = encodeTicketToBytes(prepared);
-  const extracted = extractSignedData(bytes);
-  return ecSign(extracted.level2SignedBytes, privateKey, curve);
+  const extracted = extractTicket(bytes);
+  return ecSign(extracted.level2.signedBytes, privateKey, curve);
 }
 
 /**

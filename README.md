@@ -237,13 +237,14 @@ import type { Level1KeyProvider } from 'dosipas-ts';
 const xml = fs.readFileSync('uic-publickeys.xml', 'utf-8');
 
 const provider: Level1KeyProvider = {
-  async getPublicKey(securityProvider, keyId) {
-    // Note: securityProvider.num is undefined for issuers that identify
+  async getPublicKey(key) {
+    // `key` is a SignatureKey: issuer + keyId as extracted from the barcode.
+    // Note: key.securityProviderNum is undefined for issuers that identify
     // themselves with an IA5 string instead of a numeric RICS code — those
-    // are not in the UIC registry, so branch on securityProvider.ia5.
-    const key = findKeyInXml(xml, securityProvider.num!, keyId);
-    if (!key) throw new Error('Key not found');
-    return key;
+    // are not in the UIC registry, so branch on key.securityProviderIA5.
+    const material = findKeyInXml(xml, key); // null for IA5 issuers
+    if (!material) throw new Error(`Key not found: ${key.id}`);
+    return material;
   },
 };
 
@@ -319,6 +320,9 @@ import { recoverLevel1PublicKey } from 'dosipas-ts';
 
 const candidates = recoverLevel1PublicKey([ticketBytes1, ticketBytes2]);
 // [Uint8Array] — one uncompressed EC point (0x04 || x || y)
+
+// Extracted tickets are accepted too — e.g. a signature group's tickets:
+const candidates2 = recoverLevel1PublicKey(group.tickets);
 ```
 
 With a single ticket, expect two candidates (either verifies that ticket —
@@ -375,29 +379,81 @@ getEndOfValidityTime(ticket)   // Date from v2 endOfValidity fields or v1 issuin
 getDynamicContentTime(ticket)  // Date from FDC1 timestamp or Intercode ID1 dynamic fields
 ```
 
-## Extracting signed data
+## Extracting signatures and signed data
 
-For custom verification workflows, extract the exact signed bytes from a barcode:
+`extractTicket` produces the canonical `ExtractedTicket` record: the exact
+signed bytes, the signatures, the algorithm OIDs and the Level 1 key identity,
+structured per level:
 
 ```ts
-import { extractSignedData } from 'dosipas-ts';
+import { extractTicket } from 'dosipas-ts';
 
-const extracted = extractSignedData(barcodeBytes);
+const ticket = extractTicket(barcodeBytes);
 
-extracted.level1DataBytes   // bytes signed by level1Signature
-extracted.level2SignedBytes // bytes signed by level2Signature
-extracted.security          // security metadata (algorithms, keys, signatures)
+ticket.key                // SignatureKey: issuer + keyId
+ticket.key.id             // canonical label, e.g. "1187/1" or "IWN8/1"
+ticket.level1.signedBytes // exact bytes covered by the Level 1 signature
+ticket.level1.signature   // Level 1 signature (DER), if present
+ticket.level1.keyAlg      // key algorithm OID, if the barcode carries one
+ticket.level1.signingAlg  // signing algorithm OID, if the barcode carries one
+ticket.level2             // same shape, plus the embedded level2 publicKey
 ```
+
+`verifySignatures`, `verifyLevel1Signature`, `verifyLevel2Signature`,
+`recoverLevel1PublicKey` and `SignatureCollector.add` all accept an
+`ExtractedTicket` in place of raw payload bytes, so a scan pipeline decodes
+each payload exactly once.
+
+## Collecting signatures from many scans
+
+When scanning many QR codes (e.g. with a camera in a control app), feed each
+scanned payload to a `SignatureCollector`: tickets are extracted and
+classified automatically by Level 1 key identity (`SignatureKey`), and rescans
+of the same barcode are deduplicated byte-for-byte. Unreadable scans are
+expected input in a camera loop, so `add` reports them as a result instead of
+throwing:
+
+```ts
+import { SignatureCollector } from 'dosipas-ts';
+
+const collector = new SignatureCollector();
+
+for (const payload of scans) {
+  const result = collector.add(payload); // Uint8Array or ExtractedTicket
+  switch (result.status) {
+    case 'added':     console.log(`new ticket for key ${result.group.key.id}`); break;
+    case 'duplicate': break; // same barcode scanned again — nothing changed
+    case 'invalid':   break; // not a decodable UIC barcode — nothing changed
+  }
+}
+
+for (const group of collector.groups()) {
+  group.key     // SignatureKey — securityProviderNum/IA5, keyId, id label
+  group.tickets // ExtractedTicket[] — full records, in scan order
+}
+
+collector.group('3703/7') // lookup by id label (or by SignatureKey)
+```
+
+For a batch already in hand, `collectSignatures(payloads)` does the same in
+one call (and throws on an undecodable payload, naming its index). Each group
+plugs directly into the rest of the library: look its key up in the UIC
+registry with `findKeyInXml(xml, group.key)`, recover it from the observed
+tickets with `recoverLevel1PublicKey(group.tickets)`, or verify without
+re-decoding with `verifySignatures(ticket, options)`.
 
 ## UIC public key XML utilities
 
 ```ts
 import { findKeyInXml, parseKeysXml } from 'dosipas-ts';
 
-// Find a specific key
-const key = findKeyInXml(xml, 1187, 1); // issuerCode, keyId
+// Find a specific key — by issuer RICS code + keyId, or by a SignatureKey
+// (from an extracted ticket or a signature group)
+const key = findKeyInXml(xml, 1187, 1);
+const key2 = findKeyInXml(xml, extractTicket(bytes).key);
 // Returns { publicKey: Uint8Array } or null — no algorithm metadata,
-// see the note under "Using a key provider" above.
+// see the note under "Using a key provider" above. A SignatureKey whose
+// issuer is an IA5 string yields null (the registry is keyed by RICS codes).
 
 // Parse all keys
 const keys = parseKeysXml(xml);

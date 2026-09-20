@@ -9,7 +9,8 @@
  */
 import { p256, p384, p521 } from '@noble/curves/nist.js';
 
-import { extractSignedData } from './signed-data.js';
+import { toExtractedTicket } from './signed-data.js';
+import type { ExtractedTicket, SignatureKey } from './signed-data.js';
 import { curveComponentLength, resolveAlgorithms } from './oids.js';
 import type { ResolvedAlgorithms } from './oids.js';
 import { derToRaw, extractEcPublicKeyPoint } from './signature-utils.js';
@@ -127,30 +128,29 @@ function verifyEcdsa(
  * `level1Data.level2PublicKey` field. Its algorithm OIDs can still be absent,
  * in which case they may be supplied via `algorithms`.
  *
- * @param bytes - Raw barcode payload bytes.
+ * @param input - Raw barcode payload bytes, or an already-extracted ticket.
  * @param algorithms - Algorithm OIDs to use when the barcode omits its own.
  * @returns Verification result with valid flag and optional error.
  */
 export async function verifyLevel2Signature(
-  bytes: Uint8Array,
+  input: Uint8Array | ExtractedTicket,
   algorithms?: Level2Algorithms,
 ): Promise<SignatureLevelResult> {
   try {
-    const extracted = extractSignedData(bytes);
-    const { security } = extracted;
+    const { level2 } = toExtractedTicket(input);
 
-    if (!security.level2Signature) {
+    if (!level2.signature) {
       return { valid: false, error: 'Missing level 2 signature' };
     }
 
-    if (!security.level2PublicKey) {
+    if (!level2.publicKey) {
       return { valid: false, error: 'Missing level 2 public key' };
     }
 
     const resolved = resolveAlgorithms({
       level: 2,
-      barcodeSigningAlg: security.level2SigningAlg,
-      barcodeKeyAlg: security.level2KeyAlg,
+      barcodeSigningAlg: level2.signingAlg,
+      barcodeKeyAlg: level2.keyAlg,
       configuredSigningAlg: algorithms?.signingAlg,
       configuredKeyAlg: algorithms?.keyAlg,
     });
@@ -167,9 +167,9 @@ export async function verifyLevel2Signature(
 
     return verifyEcdsaResult(
       2,
-      security.level2Signature,
-      extracted.level2SignedBytes,
-      security.level2PublicKey,
+      level2.signature,
+      level2.signedBytes,
+      level2.publicKey,
       resolved,
     );
   } catch (e: unknown) {
@@ -184,26 +184,25 @@ export async function verifyLevel2Signature(
  * embedded in the barcode. When the barcode also omits its algorithm OIDs,
  * supply them on the key material.
  *
- * @param bytes - Raw barcode payload bytes.
+ * @param input - Raw barcode payload bytes, or an already-extracted ticket.
  * @param key - The Level 1 public key and, optionally, its algorithms.
  * @returns Verification result with valid flag and optional error.
  */
 export async function verifyLevel1Signature(
-  bytes: Uint8Array,
+  input: Uint8Array | ExtractedTicket,
   key: Level1KeyMaterial,
 ): Promise<SignatureLevelResult> {
   try {
-    const extracted = extractSignedData(bytes);
-    const { security } = extracted;
+    const { level1 } = toExtractedTicket(input);
 
-    if (!security.level1Signature) {
+    if (!level1.signature) {
       return { valid: false, error: 'Missing level 1 signature' };
     }
 
     const resolved = resolveAlgorithms({
       level: 1,
-      barcodeSigningAlg: security.level1SigningAlg,
-      barcodeKeyAlg: security.level1KeyAlg,
+      barcodeSigningAlg: level1.signingAlg,
+      barcodeKeyAlg: level1.keyAlg,
       configuredSigningAlg: key.signingAlg,
       configuredKeyAlg: key.keyAlg,
     });
@@ -226,8 +225,8 @@ export async function verifyLevel1Signature(
 
     return verifyEcdsaResult(
       1,
-      security.level1Signature,
-      extracted.level1DataBytes,
+      level1.signature,
+      level1.signedBytes,
       key.publicKey,
       resolved,
     );
@@ -239,32 +238,37 @@ export async function verifyLevel1Signature(
 /**
  * Verify both Level 1 and Level 2 signatures on a UIC barcode.
  *
- * @param bytes - Raw barcode payload bytes.
+ * @param input - Raw barcode payload bytes, or an already-extracted ticket.
  * @param options - Verification options (key provider or explicit key).
  * @returns Combined verification results for both levels.
  */
 export async function verifySignatures(
-  bytes: Uint8Array,
+  input: Uint8Array | ExtractedTicket,
   options?: VerifyOptions,
 ): Promise<SignatureVerificationResult> {
+  let extracted: ExtractedTicket;
+  try {
+    extracted = toExtractedTicket(input);
+  } catch (e: unknown) {
+    const error = e instanceof Error ? e.message : 'Verification failed';
+    return { level1: { valid: false, error }, level2: { valid: false, error } };
+  }
+
   // Level 2 verification (self-contained)
-  const level2 = await verifyLevel2Signature(bytes, options?.level2Algorithms);
+  const level2 = await verifyLevel2Signature(extracted, options?.level2Algorithms);
 
   // Level 1 verification (needs external key material)
   let level1: SignatureLevelResult;
 
   if (options?.level1Key) {
-    level1 = await verifyLevel1Signature(bytes, options.level1Key);
+    level1 = await verifyLevel1Signature(extracted, options.level1Key);
   } else if (options?.level1KeyProvider) {
     try {
-      const extracted = extractSignedData(bytes);
-      const { security } = extracted;
       const material = await options.level1KeyProvider.getPublicKey(
-        { num: security.securityProviderNum, ia5: security.securityProviderIA5 },
-        security.keyId ?? 0,
-        security.level1KeyAlg,
+        extracted.key,
+        extracted.level1.keyAlg,
       );
-      level1 = await verifyLevel1Signature(bytes, material);
+      level1 = await verifyLevel1Signature(extracted, material);
     } catch (e: unknown) {
       level1 = {
         valid: false,
@@ -297,15 +301,25 @@ export async function verifySignatures(
  * ```
  *
  * @param xml - XML string from https://railpublickey.uic.org/download.php
- * @param issuerCode - The issuer RICS code (securityProviderNum)
- * @param keyId - The key identifier
+ * @param issuerCode - The issuer RICS code (securityProviderNum), or a
+ *   {@link SignatureKey} (e.g. from an extracted ticket or a signature group)
+ * @param keyId - The key identifier (omitted when a SignatureKey is passed)
  * @returns Key material holding the decoded public key, or null if not found.
+ *   A SignatureKey identifying its issuer with an IA5 string yields null:
+ *   the registry is keyed by numeric RICS codes.
  */
+export function findKeyInXml(xml: string, key: SignatureKey): Level1KeyMaterial | null;
+export function findKeyInXml(xml: string, issuerCode: number, keyId: number): Level1KeyMaterial | null;
 export function findKeyInXml(
   xml: string,
-  issuerCode: number,
-  keyId: number,
+  keyOrIssuer: SignatureKey | number,
+  maybeKeyId?: number,
 ): Level1KeyMaterial | null {
+  const issuerCode = typeof keyOrIssuer === 'number'
+    ? keyOrIssuer
+    : keyOrIssuer.securityProviderNum;
+  const keyId = typeof keyOrIssuer === 'number' ? maybeKeyId! : keyOrIssuer.keyId;
+  if (issuerCode == null || keyId == null) return null;
   // Simple regex-based XML parser (no DOM dependency for Node.js compatibility)
   const keyRegex = /<key>([\s\S]*?)<\/key>/g;
   let match: RegExpExecArray | null;

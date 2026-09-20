@@ -13,7 +13,7 @@ import {
   encodeLevel1Data,
   encodeLevel2SignedData,
   encodeUicBarcode,
-  extractSignedData,
+  extractTicket,
   generateKeyPair,
   getPublicKey,
   verifyLevel1Signature,
@@ -255,7 +255,7 @@ describe('signPayload', () => {
 });
 
 describe('encodeLevel1Data', () => {
-  it('produces bytes matching extractSignedData for Solea ticket', () => {
+  it('produces bytes matching extractTicket for Solea ticket', () => {
     const ticket = decodeTicket(SOLEA_TICKET_HEX);
     const l1 = ticket.level2SignedData.level1Data;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
@@ -281,12 +281,12 @@ describe('encodeLevel1Data', () => {
       level2SignedData: { ...withOids.level2SignedData, level1Signature: l1Sig },
       level2Signature: new Uint8Array(0),
     });
-    const extracted = extractSignedData(fullBytes);
+    const extracted = extractTicket(fullBytes);
 
-    expect(level1Raw.data).toEqual(extracted.level1DataBytes);
+    expect(level1Raw.data).toEqual(extracted.level1.signedBytes);
   });
 
-  it('produces bytes matching extractSignedData for CTS ticket', () => {
+  it('produces bytes matching extractTicket for CTS ticket', () => {
     const ticket = decodeTicket(CTS_TICKET_HEX);
     const l1 = ticket.level2SignedData.level1Data;
     const l1Key = makeKeyPair(FIPS_L1_PRIV, 'P-256');
@@ -310,9 +310,9 @@ describe('encodeLevel1Data', () => {
       level2SignedData: { ...withOids.level2SignedData, level1Signature: l1Sig },
       level2Signature: new Uint8Array(0),
     });
-    const extracted = extractSignedData(fullBytes);
+    const extracted = extractTicket(fullBytes);
 
-    expect(level1Raw.data).toEqual(extracted.level1DataBytes);
+    expect(level1Raw.data).toEqual(extracted.level1.signedBytes);
   });
 });
 
