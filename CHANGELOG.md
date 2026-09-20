@@ -2,6 +2,8 @@
 
 ## Upcoming release
 
+## [3.0.0]
+
 ### Breaking Changes
 
 - **`extractSignedData` is replaced by `extractTicket`**, which returns the
