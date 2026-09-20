@@ -429,10 +429,10 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // Generate Level 1 signature
   // -------------------------------------------------------------------------
 
-  const handleGenerateL1Sig = useCallback(() => {
+  const handleGenerateL1Sig = useCallback(async () => {
     try {
       const prepared = buildPreparedTicket();
-      const sig = signLevel1Data(prepared, l1PrivKey, l1Curve);
+      const sig = await signLevel1Data(prepared, l1PrivKey, l1Curve);
       const sigHex = bytesToHex(sig);
       setL1SigHex(sigHex);
       setL1SigStale(false);
@@ -448,7 +448,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
   // Generate Level 2 signature
   // -------------------------------------------------------------------------
 
-  const handleGenerateL2Sig = useCallback(() => {
+  const handleGenerateL2Sig = useCallback(async () => {
     if (!l1SigHex) {
       setL2SigError('Level 1 signature must be generated first');
       return;
@@ -462,7 +462,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
           level1Signature: hexToBytes(l1SigHex),
         },
       };
-      const sig = signLevel2Data(withL1Sig, l2PrivKey, l2Curve);
+      const sig = await signLevel2Data(withL1Sig, l2PrivKey, l2Curve);
       const sigHex = bytesToHex(sig);
       setL2SigHex(sigHex);
       setL2SigStale(false);
@@ -579,7 +579,9 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
             regenRef.current = { ...params, ticket: updatedTicket };
             setTicket(updatedTicket);
 
-            // Full sign+encode for dynamic refresh
+            // Full sign+encode for dynamic refresh (async, outside the
+            // synchronous state updater)
+            void (async () => {
             try {
               const level1Key: KeyPair = {
                 privateKey: hexToBytes(params.l1PrivKey),
@@ -591,7 +593,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                 publicKey: getPublicKey(params.l2PrivKey, params.l2Curve),
                 curve: params.l2Curve as CurveName,
               };
-              const refreshedBytes = signTicket(updatedTicket, level1Key, level2Key);
+              const refreshedBytes = await signTicket(updatedTicket, level1Key, level2Key);
               const refreshedHex = bytesToHex(refreshedBytes);
               setHex(refreshedHex);
               setBytes(refreshedBytes);
@@ -611,7 +613,7 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                   },
                 },
               };
-              const l1Sig = signLevel1Data(prepTicket, params.l1PrivKey, params.l1Curve);
+              const l1Sig = await signLevel1Data(prepTicket, params.l1PrivKey, params.l1Curve);
               setL1SigHex(bytesToHex(l1Sig));
               setL1SigStale(false);
               const withL1Sig: UicBarcodeTicket = {
@@ -621,13 +623,14 @@ export default function EncodeTab({ onDecode, onControl, prefillInput, onPrefill
                   level1Signature: l1Sig,
                 },
               };
-              const l2Sig = signLevel2Data(withL1Sig, params.l2PrivKey, params.l2Curve);
+              const l2Sig = await signLevel2Data(withL1Sig, params.l2PrivKey, params.l2Curve);
               setL2SigHex(bytesToHex(l2Sig));
               setL2SigStale(false);
               setEncodeError(null);
             } catch (e) {
               setEncodeError(e instanceof Error ? e.message : 'Dynamic refresh failed');
             }
+            })();
           }
           return dynamicRefreshInterval;
         }
