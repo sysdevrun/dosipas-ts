@@ -1,8 +1,8 @@
-import type { ExtractedSignedData } from 'dosipas-ts';
+import type { ExtractedTicket } from 'dosipas-ts';
 
 interface Props {
   hex: string;
-  signedData: ExtractedSignedData | null;
+  signedData: ExtractedTicket | null;
 }
 
 interface Region {
@@ -34,44 +34,44 @@ export default function HexViewer({ hex, signedData }: Props) {
   const regions: Region[] = [];
 
   if (signedData) {
-    const l1Idx = findSubarray(bytes, signedData.level1DataBytes);
+    const l1Idx = findSubarray(bytes, signedData.level1.signedBytes);
     if (l1Idx >= 0) {
       regions.push({
         start: l1Idx,
-        end: l1Idx + signedData.level1DataBytes.length,
+        end: l1Idx + signedData.level1.signedBytes.length,
         label: 'L1 data',
         color: 'bg-blue-100 text-blue-900',
       });
     }
 
-    const l2Idx = findSubarray(bytes, signedData.level2SignedBytes);
+    const l2Idx = findSubarray(bytes, signedData.level2.signedBytes);
     if (l2Idx >= 0) {
       regions.push({
         start: l2Idx,
-        end: l2Idx + signedData.level2SignedBytes.length,
+        end: l2Idx + signedData.level2.signedBytes.length,
         label: 'L2 signed',
         color: 'bg-green-100 text-green-900',
       });
     }
 
-    if (signedData.security.level1Signature) {
-      const sigIdx = findSubarray(bytes, signedData.security.level1Signature);
+    if (signedData.level1.signature) {
+      const sigIdx = findSubarray(bytes, signedData.level1.signature);
       if (sigIdx >= 0) {
         regions.push({
           start: sigIdx,
-          end: sigIdx + signedData.security.level1Signature.length,
+          end: sigIdx + signedData.level1.signature.length,
           label: 'L1 sig',
           color: 'bg-orange-100 text-orange-900',
         });
       }
     }
 
-    if (signedData.security.level2Signature) {
-      const sigIdx = findSubarray(bytes, signedData.security.level2Signature);
+    if (signedData.level2.signature) {
+      const sigIdx = findSubarray(bytes, signedData.level2.signature);
       if (sigIdx >= 0) {
         regions.push({
           start: sigIdx,
-          end: sigIdx + signedData.security.level2Signature.length,
+          end: sigIdx + signedData.level2.signature.length,
           label: 'L2 sig',
           color: 'bg-purple-100 text-purple-900',
         });

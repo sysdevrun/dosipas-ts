@@ -81,14 +81,15 @@ export async function createKeyProvider(
 ): Promise<Level1KeyProvider> {
   const xml = await loadKeysXml();
   return {
-    async getPublicKey(securityProvider, keyId) {
+    async getPublicKey(key) {
       // Issuers identified by an IA5 string are not in the UIC registry,
       // which is keyed by numeric RICS codes.
-      if (trustCarJauneKey && securityProvider.ia5 === 'IWN8' && keyId === 1) {
+      if (trustCarJauneKey && key.securityProviderIA5 === 'IWN8' && key.keyId === 1) {
         return getCarJauneKey();
       }
 
-      const issuerCode = securityProvider.num ?? 0;
+      const issuerCode = key.securityProviderNum ?? 0;
+      const keyId = key.keyId ?? 0;
       // No algorithms supplied for these two: their barcodes carry their own
       // OIDs, and a configured value that disagreed would be a hard error.
       if (trustFipsKey && issuerCode === 9999 && keyId === 0) {
@@ -98,12 +99,11 @@ export async function createKeyProvider(
         return { publicKey: getSysdevrunPublicKey() };
       }
 
-      const key = findKeyInXml(xml, issuerCode, keyId);
-      if (!key) {
-        const issuer = securityProvider.ia5 ?? issuerCode;
-        throw new Error(`Key not found: issuer=${issuer}, keyId=${keyId}`);
+      const material = findKeyInXml(xml, issuerCode, keyId);
+      if (!material) {
+        throw new Error(`Key not found: ${key.id}`);
       }
-      return key;
+      return material;
     },
   };
 }

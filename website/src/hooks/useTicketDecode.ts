@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { decodeTicket, verifySignatures, extractSignedData } from 'dosipas-ts';
+import { decodeTicket, verifySignatures, extractTicket } from 'dosipas-ts';
 import type {
   UicBarcodeTicket,
   SignatureVerificationResult,
-  ExtractedSignedData,
+  ExtractedTicket,
 } from 'dosipas-ts';
 import { createKeyProvider } from '../lib/keys';
 
 export interface DecodeResult {
   ticket: UicBarcodeTicket | null;
   signatures: SignatureVerificationResult | null;
-  signedData: ExtractedSignedData | null;
+  signedData: ExtractedTicket | null;
   error: string | null;
   loading: boolean;
 }
@@ -23,7 +23,7 @@ export function useTicketDecode(
 ): DecodeResult {
   const [ticket, setTicket] = useState<UicBarcodeTicket | null>(null);
   const [signatures, setSignatures] = useState<SignatureVerificationResult | null>(null);
-  const [signedData, setSignedData] = useState<ExtractedSignedData | null>(null);
+  const [signedData, setSignedData] = useState<ExtractedTicket | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -54,7 +54,7 @@ export function useTicketDecode(
           const bytes = new Uint8Array(
             clean.match(/.{1,2}/g)!.map((b) => parseInt(b, 16)),
           );
-          const extracted = extractSignedData(bytes);
+          const extracted = extractTicket(bytes);
           setSignedData(extracted);
         } catch {
           setSignedData(null);
